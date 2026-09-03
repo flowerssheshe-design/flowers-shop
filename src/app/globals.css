@@ -1,0 +1,79 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800&family=Frank+Ruhl+Libre:wght@400;500;700;900&display=swap');
+
+@layer base {
+  :root {
+    /* Deep emerald */
+    --background: 60 30% 97%;
+    --foreground: 160 30% 12%;
+
+    --muted: 60 25% 92%;
+    --muted-foreground: 160 10% 35%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 160 30% 12%;
+
+    --border: 60 20% 86%;
+    --input: 60 20% 86%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 160 30% 12%;
+
+    --primary: 158 64% 22%;
+    --primary-foreground: 60 30% 97%;
+
+    --secondary: 60 35% 88%;
+    --secondary-foreground: 158 64% 22%;
+
+    --accent: 158 40% 92%;
+    --accent-foreground: 158 64% 22%;
+
+    --destructive: 0 70% 45%;
+    --destructive-foreground: 0 0% 100%;
+
+    --ring: 158 64% 32%;
+
+    /* Brand extras */
+    --gold: 42 65% 52%;
+    --gold-foreground: 42 80% 18%;
+    --cream: 42 55% 92%;
+    --cream-foreground: 160 30% 12%;
+
+    --radius: 0.875rem;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    font-family: 'Heebo', system-ui, sans-serif;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    text-rendering: optimizeLegibility;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  h1, h2, h3, .brand-serif {
+    font-family: 'Frank Ruhl Libre', 'Heebo', serif;
+    letter-spacing: -0.01em;
+  }
+}
+
+@layer utilities {
+  .text-balance { text-wrap: balance; }
+
+  .divider-gold {
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      hsl(var(--gold)) 50%,
+      transparent 100%
+    );
+  }
+}
