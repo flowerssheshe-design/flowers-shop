@@ -11,6 +11,9 @@ export const WHATSAPP_MAX_TEXT_LENGTH = 4096;
 export const WHATSAPP_CONFIGURED = Boolean(
   WHATSAPP_API_TOKEN && WHATSAPP_PHONE_ID,
 );
+export const WHATSAPP_CONFIGURED_PUBLIC = Boolean(
+  process.env.NEXT_PUBLIC_WHATSAPP_CONFIGURED === "1",
+);
 
 export const PICKUP_ADDRESS =
   process.env.NEXT_PUBLIC_PICKUP_ADDRESS ?? "נחל חתירה 10,ירוחם";

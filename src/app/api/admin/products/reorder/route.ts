@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SUPABASE_CONFIGURED } from "@/lib/constants";
+import { requireAdmin } from "@/lib/admin-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,6 +16,8 @@ const Body = z.object({
 });
 
 export async function POST(req: Request) {
+  const denied = requireAdmin();
+  if (denied) return denied;
   if (!SUPABASE_CONFIGURED) {
     return NextResponse.json({ error: "המערכת אינה מוגדרת" }, { status: 503 });
   }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SUPABASE_CONFIGURED, CLUB_DISCOUNT_THRESHOLD } from "@/lib/constants";
+import { requireAdmin } from "@/lib/admin-auth";
 import type { TopProduct, WeeklyKpi } from "@/types";
 
 export const runtime = "nodejs";
@@ -25,6 +26,8 @@ function emptyKpi(): WeeklyKpi {
 }
 
 export async function GET() {
+  const denied = requireAdmin();
+  if (denied) return denied;
   if (!SUPABASE_CONFIGURED) {
     return NextResponse.json({
       kpi: emptyKpi(),

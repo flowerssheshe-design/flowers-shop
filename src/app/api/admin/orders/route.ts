@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SUPABASE_CONFIGURED } from "@/lib/constants";
+import { requireAdmin } from "@/lib/admin-auth";
 import type { Order } from "@/types";
 
 export const runtime = "nodejs";
@@ -8,6 +9,8 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export async function GET() {
+  const denied = requireAdmin();
+  if (denied) return denied;
   if (!SUPABASE_CONFIGURED) {
     return NextResponse.json({ orders: [] });
   }

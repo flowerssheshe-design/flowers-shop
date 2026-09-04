@@ -53,6 +53,7 @@ export default function AdminOrderDetailPage() {
     if (orderId) {
       void load();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderId]);
 
   async function load() {

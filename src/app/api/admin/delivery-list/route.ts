@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SUPABASE_CONFIGURED } from "@/lib/constants";
+import { requireAdmin } from "@/lib/admin-auth";
 import { formatILS } from "@/lib/utils";
 import type { Order } from "@/types";
 
@@ -53,6 +54,8 @@ function buildCsv(orders: Order[]): string {
 }
 
 export async function GET() {
+  const denied = requireAdmin();
+  if (denied) return denied;
   if (!SUPABASE_CONFIGURED) {
     return NextResponse.json({ csv: "", count: 0 });
   }

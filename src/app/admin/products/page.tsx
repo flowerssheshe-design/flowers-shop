@@ -146,11 +146,13 @@ export default function AdminProductsPage() {
   }
 
   function downloadMessage() {
-    const text = buildSupplierTextFile({
-      aggregates: supplier,
-      weekStart: weekBounds.weekStart,
-      weekEnd: weekBounds.weekEnd,
-    });
+    const text =
+      "\uFEFF" +
+      buildSupplierTextFile({
+        aggregates: supplier,
+        weekStart: weekBounds.weekStart,
+        weekEnd: weekBounds.weekEnd,
+      });
     const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");

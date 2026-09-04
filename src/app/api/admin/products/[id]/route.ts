@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SUPABASE_CONFIGURED } from "@/lib/constants";
+import { requireAdmin } from "@/lib/admin-auth";
 import type { Product } from "@/types";
 
 export const runtime = "nodejs";
@@ -23,6 +24,8 @@ export async function GET(
   ctx: { params: Promise<{ id: string }> },
 ) {
   const { id } = await ctx.params;
+  const denied = requireAdmin();
+  if (denied) return denied;
   if (!SUPABASE_CONFIGURED) {
     return NextResponse.json({ error: "המערכת אינה מוגדרת" }, { status: 503 });
   }
@@ -48,6 +51,8 @@ export async function PATCH(
   ctx: { params: Promise<{ id: string }> },
 ) {
   const { id } = await ctx.params;
+  const denied = requireAdmin();
+  if (denied) return denied;
   if (!SUPABASE_CONFIGURED) {
     return NextResponse.json({ error: "המערכת אינה מוגדרת" }, { status: 503 });
   }
@@ -86,6 +91,8 @@ export async function DELETE(
   ctx: { params: Promise<{ id: string }> },
 ) {
   const { id } = await ctx.params;
+  const denied = requireAdmin();
+  if (denied) return denied;
   if (!SUPABASE_CONFIGURED) {
     return NextResponse.json({ error: "המערכת אינה מוגדרת" }, { status: 503 });
   }

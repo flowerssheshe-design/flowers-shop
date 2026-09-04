@@ -7,15 +7,26 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-const AUTH_KEY = "flowers-admin-auth";
+export const ADMIN_AUTH_KEY = "flowers-admin-auth";
+export const ADMIN_AUTH_COOKIE = "flowers_admin_auth";
+export const ADMIN_AUTH_TTL_DAYS = 7;
+
+function setAdminCookie() {
+  if (typeof document === "undefined") return;
+  const maxAge = ADMIN_AUTH_TTL_DAYS * 24 * 60 * 60;
+  document.cookie = `${ADMIN_AUTH_COOKIE}=1; Path=/; Max-Age=${maxAge}; SameSite=Lax`;
+}
 
 export function isAdminAuthenticated(): boolean {
   if (typeof window === "undefined") return false;
-  return sessionStorage.getItem(AUTH_KEY) === "1";
+  return sessionStorage.getItem(ADMIN_AUTH_KEY) === "1";
 }
 
 export function clearAdminAuth() {
-  if (typeof window !== "undefined") sessionStorage.removeItem(AUTH_KEY);
+  if (typeof window !== "undefined") {
+    sessionStorage.removeItem(ADMIN_AUTH_KEY);
+    document.cookie = `${ADMIN_AUTH_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax`;
+  }
 }
 
 export default function AdminGate() {
@@ -39,7 +50,8 @@ export default function AdminGate() {
         const t = await res.json().catch(() => ({}));
         throw new Error(t.error ?? "קוד שגוי");
       }
-      sessionStorage.setItem(AUTH_KEY, "1");
+      sessionStorage.setItem(ADMIN_AUTH_KEY, "1");
+      setAdminCookie();
       router.replace("/admin/products");
     } catch (e) {
       setError(e instanceof Error ? e.message : "שגיאה");

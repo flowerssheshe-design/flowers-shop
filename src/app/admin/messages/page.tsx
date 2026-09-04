@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
+  AlertTriangle,
   ExternalLink,
   Loader2,
   LogOut,
@@ -20,7 +21,10 @@ import { clearAdminAuth, isAdminAuthenticated } from "@/components/AdminGate";
 import { AdminNav } from "@/components/AdminNav";
 import { normalizeWhatsAppRecipient } from "@/lib/utils";
 import type { BroadcastRecipientResult } from "@/lib/whatsapp";
-import { WHATSAPP_MAX_TEXT_LENGTH } from "@/lib/constants";
+import {
+  WHATSAPP_CONFIGURED_PUBLIC,
+  WHATSAPP_MAX_TEXT_LENGTH,
+} from "@/lib/constants";
 import type { AdminUser } from "@/types";
 
 type TargetMode = "all" | "selected";
@@ -157,7 +161,11 @@ export default function AdminMessagesPage() {
     );
   }
 
-  const sendDisabled = sending || message.trim().length === 0 || recipientCount === 0;
+  const sendDisabled =
+    !WHATSAPP_CONFIGURED_PUBLIC ||
+    sending ||
+    message.trim().length === 0 ||
+    recipientCount === 0;
 
   return (
     <main className="min-h-screen bg-muted/30 pb-12">
@@ -187,6 +195,35 @@ export default function AdminMessagesPage() {
         )}
 
         <h1 className="text-xl font-bold">הודעות וואצפ</h1>
+
+        {!WHATSAPP_CONFIGURED_PUBLIC && (
+          <div
+            role="alert"
+            className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 shadow-sm"
+          >
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+            <div className="space-y-1">
+              <p className="font-semibold">
+                שליחת הודעות וואצפ אינה מוגדרת כרגע
+              </p>
+              <p className="text-amber-800">
+                כדי לאפשר שליחה יש להגדיר את המשתנים
+                <code className="mx-1 rounded bg-amber-100 px-1 py-0.5 font-mono text-xs">
+                  WHATSAPP_API_TOKEN
+                </code>
+                ו-
+                <code className="mx-1 rounded bg-amber-100 px-1 py-0.5 font-mono text-xs">
+                  WHATSAPP_PHONE_ID
+                </code>
+                בסביבת הפריסה (Netlify) ולהגדיר
+                <code className="mx-1 rounded bg-amber-100 px-1 py-0.5 font-mono text-xs">
+                  NEXT_PUBLIC_WHATSAPP_CONFIGURED=1
+                </code>
+                . עד אז לחיצה על &quot;שלח&quot; תחזיר שגיאת 503.
+              </p>
+            </div>
+          </div>
+        )}
 
         <div className="rounded-xl border bg-card p-5 shadow-sm space-y-4">
           {/* Message */}
