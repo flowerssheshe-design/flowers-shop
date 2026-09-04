@@ -197,7 +197,8 @@ export function Storefront({
   function openCheckout() {
     if (cartItems.length === 0) return;
     if (!user) {
-      // Guest: show upsell first (unless already dismissed this session)
+      // Guest: show the account upsell first (once) so they can pick
+      // between signing up / logging in or continuing as a guest.
       let dismissed = false;
       try {
         dismissed = sessionStorage.getItem("flowers-upsell-dismissed") === "1";
@@ -205,11 +206,12 @@ export function Storefront({
         // ignore
       }
       if (dismissed) {
-        setLoginOpen(true);
-        setLoginMode("login");
-      } else {
-        setUpsellOpen(true);
+        // They already chose to continue without an account — honor that
+        // and send them straight to checkout instead of forcing a login.
+        continueAsGuest();
+        return;
       }
+      setUpsellOpen(true);
       return;
     }
     setSubmitError(null);
@@ -273,6 +275,7 @@ export function Storefront({
           products={products}
           qtyById={qty}
           onQtyChange={onQtyChange}
+          qualifiesForMember={qualifiesForMember}
         />
       </section>
 

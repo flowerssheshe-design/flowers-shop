@@ -4,21 +4,27 @@ import Image from "next/image";
 import { Minus, Plus, ShoppingBag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatILS } from "@/lib/utils";
-import { CLUB_DISCOUNT_THRESHOLD, type Product } from "@/types";
+import {
+  CLUB_DISCOUNT_THRESHOLD,
+  MEMBER_DISCOUNT_PERCENT,
+  type Product,
+} from "@/types";
 
 type Props = {
   product: Product;
   qty: number;
   onChange: (qty: number) => void;
+  qualifiesForMember: boolean;
 };
 
 const FALLBACK =
   "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 300'><rect width='400' height='300' fill='%23f3f4f6'/><text x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%239ca3af' font-family='Heebo,sans-serif' font-size='24'>פרחים</text></svg>";
 
-export function ProductCard({ product, qty, onChange }: Props) {
-  const hasDiscount =
+export function ProductCard({ product, qty, onChange, qualifiesForMember }: Props) {
+  const hasMemberPrice =
     product.price_member > 0 && product.price_member < product.price_standard;
-  const discountPercent = hasDiscount
+  const showMemberPrice = qualifiesForMember && hasMemberPrice;
+  const discountPercent = showMemberPrice
     ? Math.round(
         ((product.price_standard - product.price_member) /
           product.price_standard) *
@@ -62,7 +68,7 @@ export function ProductCard({ product, qty, onChange }: Props) {
         </div>
 
         <div className="mt-1 space-y-1.5 rounded-lg border border-primary/10 bg-cream/60 p-3">
-          {hasDiscount ? (
+          {showMemberPrice ? (
             <>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">מחיר רגיל</span>
@@ -72,7 +78,7 @@ export function ProductCard({ product, qty, onChange }: Props) {
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium text-primary">
-מחיר לקוח קבוע
+                  מחיר לקוח קבוע
                 </span>
                 <span className="brand-serif text-2xl font-bold text-primary tabular-nums">
                   {formatILS(product.price_member)}
@@ -94,9 +100,17 @@ export function ProductCard({ product, qty, onChange }: Props) {
           )}
         </div>
 
-        <p className="text-[11px] leading-snug text-muted-foreground">
-          *הנחת לקוח קבוע מוענקת למשתמשים רשומים שביצעו {CLUB_DISCOUNT_THRESHOLD} הזמנות או יותר באתר
-        </p>
+        {showMemberPrice ? (
+          <p className="text-[11px] leading-snug text-gold-foreground">
+            *הנחת לקוח קבוע של {MEMBER_DISCOUNT_PERCENT}% מוענקת לכם באופן
+            אוטומטי — {discountPercent}% הנחה על כל הזמנה
+          </p>
+        ) : (
+          <p className="text-[11px] leading-snug text-muted-foreground">
+            *הנחת לקוח קבוע של {MEMBER_DISCOUNT_PERCENT}% זמינה למשתמשים רשומים
+            שביצעו {CLUB_DISCOUNT_THRESHOLD} הזמנות או יותר באתר
+          </p>
+        )}
 
         <div className="mt-auto pt-1">
           {qty === 0 ? (
