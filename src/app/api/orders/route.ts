@@ -5,6 +5,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { SUPABASE_CONFIGURED, CLUB_DISCOUNT_THRESHOLD } from "@/lib/constants";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 const CartItemSchema = z.object({
   productId: z.string().uuid(),

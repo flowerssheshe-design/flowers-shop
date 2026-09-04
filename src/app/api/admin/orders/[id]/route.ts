@@ -5,6 +5,8 @@ import { SUPABASE_CONFIGURED } from "@/lib/constants";
 import type { Order } from "@/types";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 const PatchSchema = z.object({
   status: z.enum(["pending", "confirmed", "completed", "cancelled"]).optional(),

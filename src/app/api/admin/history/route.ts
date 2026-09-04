@@ -5,6 +5,7 @@ import type { Order, TopProduct, WeeklyArchive } from "@/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export async function GET(req: Request) {
   if (!SUPABASE_CONFIGURED) {

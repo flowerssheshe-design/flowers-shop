@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { SUPABASE_CONFIGURED } from "@/lib/constants";
 import type { Product } from "@/types";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 const PatchSchema = z.object({
   title: z.string().min(1).max(200).optional(),
@@ -25,7 +27,7 @@ export async function GET(
     return NextResponse.json({ error: "המערכת אינה מוגדרת" }, { status: 503 });
   }
   try {
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     const { data, error } = await supabase
       .from("products")
       .select("*")
@@ -59,7 +61,7 @@ export async function PATCH(
   }
 
   try {
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     const { data, error } = await supabase
       .from("products")
       .update(parsed.data)
@@ -88,7 +90,7 @@ export async function DELETE(
     return NextResponse.json({ error: "המערכת אינה מוגדרת" }, { status: 503 });
   }
   try {
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     const { error } = await supabase
       .from("products")
       .update({ is_active: false })

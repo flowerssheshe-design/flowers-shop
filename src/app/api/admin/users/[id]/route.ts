@@ -4,6 +4,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { SUPABASE_CONFIGURED } from "@/lib/constants";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 const PatchSchema = z.object({
   full_name: z.string().min(2).max(100),

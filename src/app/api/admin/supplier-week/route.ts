@@ -1,17 +1,18 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { SUPABASE_CONFIGURED } from "@/lib/constants";
 import type { SupplierAggregate } from "@/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export async function GET() {
   if (!SUPABASE_CONFIGURED) {
     return NextResponse.json({ aggregates: [] });
   }
   try {
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     // Sunday-start week boundary in server timezone.
     const { data, error } = await supabase.rpc("supplier_week_aggregate");
     if (error) {
@@ -26,7 +27,7 @@ export async function GET() {
 }
 
 async function fallbackAggregation(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: Awaited<ReturnType<typeof createAdminClient>>,
 ) {
   const since = new Date();
   const day = since.getDay(); // 0=Sun

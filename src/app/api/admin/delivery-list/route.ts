@@ -6,6 +6,7 @@ import type { Order } from "@/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 const ACTIVE_DELIVERY_STATUSES: Order["status"][] = ["pending", "confirmed"];
 

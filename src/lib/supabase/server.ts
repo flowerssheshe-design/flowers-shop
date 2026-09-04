@@ -1,8 +1,12 @@
+import "server-only";
 import { cookies } from "next/headers";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/constants";
 
 type CookieToSet = { name: string; value: string; options?: CookieOptions };
+
+const noStoreFetch: typeof fetch = (input, init) =>
+  fetch(input, { ...init, cache: "no-store" });
 
 /**
  * Use inside Server Components (read-only). Cookie writes are best-effort
@@ -23,6 +27,7 @@ export async function createClient() {
         }
       },
     },
+    global: { fetch: noStoreFetch },
   });
 }
 
@@ -48,6 +53,7 @@ export async function createClientForRoute(): Promise<{
         cookiesToSet.push(...items);
       },
     },
+    global: { fetch: noStoreFetch },
   });
 
   return { supabase, cookiesToSet };
