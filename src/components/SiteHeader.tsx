@@ -28,27 +28,33 @@ export function SiteHeader({ cartCount, onCartClick, user }: Props) {
 
   return (
     <header className="sticky top-0 z-40 border-b border-primary/10 bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/70">
-      <div className="container flex flex-col items-center gap-2 py-3 sm:py-4">
+      <div className="container flex flex-col items-center gap-3 py-3 sm:py-4">
         <Link
           href="/"
-          className="flex items-center gap-2 text-center"
-          aria-label="פרחים לכבוד שבת קודש"
+          className="flex items-center justify-center gap-3 text-center"
+          aria-label="לתת מהלב - פרחים בכל שישי"
         >
-          <span aria-hidden className="text-2xl">🌿</span>
-          <span className="brand-serif text-xl font-bold leading-tight text-primary sm:text-2xl">
-            פרחים לכבוד שבת קודש
+          {/* <span aria-hidden className="text-3xl sm:text-4xl">🌿</span> */}
+          <span className="leading-tight">
+            <span className="brand-serif inline-flex items-baseline text-[2.5rem] font-extrabold tracking-tight text-primary sm:text-[3rem] md:text-[3.5rem]">
+              לתת מהלב
+              <span className="ms-3 text-sm font-semibold leading-tight text-foreground/80 sm:text-base md:text-lg">
+                פרחים בכל שישי
+              </span>
+            </span>
           </span>
-          <span aria-hidden className="text-2xl">🌸</span>
+          {/* <span aria-hidden className="text-3xl sm:text-4xl">🌸</span> */}
         </Link>
 
-        <div className="divider-gold h-px w-32 opacity-70" />
+        {/* <div className="divider-gold h-px w-40 opacity-70" /> */}
 
         <nav
           aria-label="ניווט ראשי"
-          className="flex w-full items-center justify-between gap-2"
+          className="flex w-full items-center justify-center gap-1 sm:gap-2 md:gap-4"
         >
-          <ul className="hidden flex-1 items-center justify-center gap-1 sm:flex sm:gap-2 md:gap-6">
+          <ul className="flex items-center justify-center gap-1 sm:gap-2 md:gap-4">
             <NavItem href="/#store" label="חנות" />
+            <NavItem href="/#about" label="אודות" />
             <NavItem
               href={user ? "/profile" : "/login"}
               label="פרטי החשבון"
@@ -58,43 +64,36 @@ export function SiteHeader({ cartCount, onCartClick, user }: Props) {
                 <button
                   type="button"
                   onClick={logout}
-                  className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-sm font-medium text-foreground/80 transition hover:bg-accent hover:text-primary md:text-base"
+                  className="inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-sm font-medium text-foreground/80 transition hover:bg-accent hover:text-primary md:text-base"
                 >
-                  <LogOut className="h-3.5 w-3.5" />
+                  <LogOut className="h-4 w-4" />
                   התנתק
                 </button>
               </li>
             ) : (
               <NavItem href="/login" label="התחברות / הרשמה" />
             )}
-          </ul>
-
-          <div className="flex items-center gap-2">
-            {user && (
-              <Link
-                href="/profile"
-                aria-label="פרטי החשבון"
-                className="hidden h-9 w-9 items-center justify-center rounded-full border border-primary/20 bg-card text-primary shadow-sm hover:bg-accent sm:inline-flex"
+            <li>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={onCartClick}
+                aria-label="פתח עגלה"
+                className={cn(
+                  "relative shrink-0 rounded-full px-3",
+                  cartCount > 0 ? "bg-primary text-primary-foreground hover:bg-primary/90" : ""
+                )}
               >
-                <UserIcon className="h-4 w-4" />
-              </Link>
-            )}
-            <Button
-              type="button"
-              variant="default"
-              onClick={onCartClick}
-              aria-label="פתח עגלה"
-              className={cn("relative shrink-0 rounded-full px-4 shadow-md")}
-            >
-              <ShoppingBag className="h-4 w-4" />
-              <span className="hidden sm:inline">עגלה</span>
-              {cartCount > 0 && (
-                <span className="absolute -end-2 -top-2 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-gold px-1.5 text-xs font-bold text-gold-foreground shadow">
-                  {cartCount}
-                </span>
-              )}
-            </Button>
-          </div>
+                <ShoppingBag className="h-4 w-4" />
+                <span className="hidden sm:inline">עגלה</span>
+                {cartCount > 0 && (
+                  <span className="absolute -end-2 -top-2 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-gold px-1.5 text-xs font-bold text-gold-foreground shadow">
+                    {cartCount}
+                  </span>
+                )}
+              </Button>
+            </li>
+          </ul>
         </nav>
 
         <nav
@@ -110,13 +109,29 @@ export function SiteHeader({ cartCount, onCartClick, user }: Props) {
             <button
               type="button"
               onClick={logout}
-              className="snap-start shrink-0 rounded-full border border-primary/15 bg-card px-3 py-1.5 text-xs font-medium text-foreground/80"
+              className="snap-start shrink-0 rounded-full border border-primary/15 bg-card px-3 py-1.5 text-xs font-medium text-foreground/80 transition hover:border-primary/30 hover:bg-accent hover:text-primary"
             >
               התנתק
             </button>
           ) : (
             <MobileItem href="/login" label="התחברות / הרשמה" />
           )}
+          <button
+            type="button"
+            onClick={onCartClick}
+            aria-label="פתח עגלה"
+            className={cn(
+              "snap-start shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition",
+              cartCount > 0 ? "bg-primary text-primary-foreground hover:bg-primary/90" : ""
+            )}
+          >
+            <ShoppingBag className="h-4 w-4" />
+            {cartCount > 0 && (
+              <span className="ms-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-gold px-1 text-[10px] font-bold text-gold-foreground">
+                {cartCount}
+              </span>
+            )}
+          </button>
         </nav>
       </div>
     </header>
@@ -148,7 +163,7 @@ function NavItem({
     <li>
       <Link
         href={href}
-        className="rounded-md px-2 py-1.5 text-sm font-medium text-foreground/80 transition hover:bg-accent hover:text-primary md:text-base"
+        className="rounded-full px-3 py-1.5 text-sm font-medium text-foreground/80 transition hover:bg-accent hover:text-primary md:text-base"
       >
         {label}
       </Link>
@@ -160,7 +175,7 @@ function MobileItem({ href, label }: { href: string; label: string }) {
   return (
     <Link
       href={href}
-      className="snap-start shrink-0 rounded-full border border-primary/15 bg-card px-3 py-1.5 text-xs font-medium text-foreground/80"
+      className="snap-start shrink-0 rounded-full border border-primary/15 bg-card px-3 py-1.5 text-xs font-medium text-foreground/80 transition hover:border-primary/30 hover:bg-accent hover:text-primary"
     >
       {label}
     </Link>

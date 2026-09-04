@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
+  Download,
   ExternalLink,
   Loader2,
   LogOut,
@@ -12,6 +13,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useToast } from "@/components/ui/toaster";
 import {
   clearAdminAuth,
   isAdminAuthenticated,
@@ -47,6 +49,8 @@ export default function AdminOrdersPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [updating, setUpdating] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState(false);
+  const { toast } = useToast();
 
   useEffect(() => {
     if (!isAdminAuthenticated()) {
@@ -105,6 +109,39 @@ export default function AdminOrdersPage() {
       setError("עדכון ההזמנה נכשל");
     } finally {
       setUpdating(null);
+    }
+  }
+
+  async function downloadDeliveryList() {
+    setDownloading(true);
+    try {
+      const res = await fetch("/api/admin/delivery-list", {
+        cache: "no-store",
+      });
+      if (!res.ok) throw new Error("ייצוא רשימת משלוחים נכשל");
+      const data = (await res.json()) as { csv: string; count: number };
+      const blob = new Blob([data.csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const date = new Date().toISOString().slice(0, 10);
+      a.href = url;
+      a.download = `רשימת-משלוחים-${date}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast({
+        title: `יוצא ${data.count} הזמנות למשלוח`,
+        variant: "success",
+      });
+    } catch (e) {
+      toast({
+        title: "ייצוא נכשל",
+        description: e instanceof Error ? e.message : "שגיאה",
+        variant: "error",
+      });
+    } finally {
+      setDownloading(false);
     }
   }
 
@@ -192,6 +229,19 @@ export default function AdminOrdersPage() {
                 </option>
               ))}
             </select>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={downloadDeliveryList}
+              disabled={downloading}
+            >
+              {downloading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
+              הורד רשימת משלוחים
+            </Button>
           </div>
         </div>
 

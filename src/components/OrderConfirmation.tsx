@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { buildWhatsAppLink, formatILS } from "@/lib/utils";
-import { WHATSAPP_NUMBER } from "@/lib/constants";
+import { WHATSAPP_NUMBER, PICKUP_ADDRESS } from "@/lib/constants";
 import type { Order } from "@/types";
 import { ArrowRight, Copy, Store } from "lucide-react";
 import { useState } from "react";
@@ -49,7 +49,7 @@ export function OrderConfirmation({ order, bitNumber, payboxNumber }: Props) {
     `סה״כ: ${formatILS(order.total_amount)}`,
     order.delivery_type === "delivery"
       ? `משלוח ל: ${order.delivery_address ?? ""}`
-      : "איסוף עצמי",
+      : `איסוף עצמי - ${PICKUP_ADDRESS}`,
     "",
     "שילמתי בביט/פייבוקס ✅",
   ].join("\n");
@@ -102,7 +102,7 @@ export function OrderConfirmation({ order, bitNumber, payboxNumber }: Props) {
         <div className="mt-2 text-xs text-muted-foreground">
           {order.delivery_type === "delivery"
             ? `משלוח ל: ${order.delivery_address}`
-            : "איסוף עצמי"}
+            : `איסוף עצמי - ${PICKUP_ADDRESS}`}
         </div>
       </div>
 

@@ -14,6 +14,9 @@ import {
   Truck,
   User as UserIcon,
   Phone as PhoneIcon,
+  Phone,
+  Mail,
+  Clock,
   MapPin,
   MessageSquare,
 } from "lucide-react";
@@ -38,6 +41,10 @@ import {
   DELIVERY_FEE,
   MEMBER_DISCOUNT_PERCENT,
   PAYBOX_NUMBER,
+  PICKUP_ADDRESS,
+  BUSINESS_PHONE,
+  BUSINESS_EMAIL,
+  BUSINESS_HOURS,
 } from "@/lib/constants";
 import {
   CLUB_DISCOUNT_THRESHOLD,
@@ -245,14 +252,9 @@ export function Storefront({
             זרים וסידורי פרחים לכבוד שבת קודש
           </h2>
           <p className="mx-auto mb-5 max-w-xl text-balance text-sm text-muted-foreground sm:text-base">
-            בחרו את הזר המועדף, הזמינו מראש, ואנו נדאג להכין הכל בשלישי/רביעי לקראת
+            בחרו את הזר המועדף, הזמינו מראש, ואנו נדאג להכין הכל ברביעי/חמישי לקראת
             שבת קודש. איסוף עצמי או משלוח עד הבית.
           </p>
-
-          <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-gold/40 bg-gold/10 px-4 py-1.5 text-sm font-medium text-gold-foreground">
-            <Sparkles className="h-4 w-4" />
-            הנחת לקוח קבוע עד 10%.
-            </div>
         </div>
       </section>
 
@@ -274,6 +276,75 @@ export function Storefront({
         />
       </section>
 
+      {/* About */}
+      <section id="about" className="container scroll-mt-32 py-10">
+        <div className="mx-auto max-w-3xl">
+          <h3 className="brand-serif text-center text-2xl font-bold text-primary sm:text-3xl">
+            אודות לתת מהלב
+          </h3>
+          <div className="divider-gold mx-auto mt-3 h-px w-24" />
+
+          <div className="mt-8 space-y-6 text-sm leading-relaxed text-muted-foreground sm:text-base">
+            <p>
+              ב-<strong className="text-foreground">לתת מהלב</strong> אנחנו מתמחים בסידורי פרחים
+              וזרים לכל אירוע, עם דגש מיוחד על{" "}
+              <strong className="text-foreground">פרחים לכבוד שבת קודש</strong>.
+              אנו מספקים זרים עדינים ומלאים בפריחתם, נבחרים בקפידה ועדכניים
+              בכל יום רביעי וחמישי.
+            </p>
+            <p>
+              המטרה שלנו היא להביא אליכם שמחה ו�prettiness לביתכם ולחסוך לכם
+              זמן והפתעות. עם משלוח עד הבית או איסוף עצמי - העמידה על השles
+              היא שלכם.
+            </p>
+          </div>
+
+          <div className="mt-10 grid gap-4 sm:grid-cols-2">
+            <div className="rounded-xl border border-primary/10 bg-card p-4">
+              <h2 className="mb-3 font-semibold text-primary">פרטי התקשרות</h2>
+              <ul className="space-y-2 text-sm">
+                <li className="flex items-center gap-2">
+                  <Phone className="h-4 w-4 text-primary/70" />
+                  <a href={`tel:${BUSINESS_PHONE}`} className="hover:text-primary">
+                    {BUSINESS_PHONE}
+                  </a>
+                </li>
+                <li className="flex items-center gap-2">
+                  <Mail className="h-4 w-4 text-primary/70" />
+                  <a href={`mailto:${BUSINESS_EMAIL}`} className="hover:text-primary">
+                    {BUSINESS_EMAIL}
+                  </a>
+                </li>
+                <li className="flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-primary/70" />
+                  <span>{BUSINESS_HOURS}</span>
+                </li>
+              </ul>
+            </div>
+
+            <div className="rounded-xl border border-primary/10 bg-card p-4">
+              <h2 className="mb-3 font-semibold text-primary">איסוף עצמי</h2>
+              <ul className="space-y-2 text-sm">
+                <li className="flex items-start gap-2">
+                  <MapPin className="mt-0.5 h-4 w-4 text-primary/70" />
+                  <span>{PICKUP_ADDRESS}</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <StoreIcon className="mt-0.5 h-4 w-4 text-primary/70" />
+                  <span>
+                    איסוף זמין ביום שישי, 09:00-14:00
+                  </span>
+                </li>
+              </ul>
+              <p className="mt-3 text-xs text-muted-foreground">
+                בחרו באיסוף עצמי בהזמנה, ואנו נכין את ההזמנה לאיסוף בכתובת
+                הנ״ל.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Floating cart bar (mobile) */}
       {cartCount > 0 && (
         <div className="fixed inset-x-0 bottom-0 z-30 border-t border-primary/15 bg-background/95 p-3 backdrop-blur md:hidden">
@@ -293,6 +364,7 @@ export function Storefront({
           cartItems={cartItems}
           subtotal={subtotal}
           total={total}
+          deliveryType={deliveryType}
           onRemove={removeFromCart}
           onCheckout={openCheckout}
           onContinue={() => setCartOpen(false)}
@@ -364,6 +436,7 @@ type CartDrawerProps = {
   cartItems: CartItem[];
   subtotal: number;
   total: number;
+  deliveryType: DeliveryType;
   onRemove: (id: string) => void;
   onCheckout: () => void;
   onContinue: () => void;
@@ -373,6 +446,7 @@ function CartDrawer({
   cartItems,
   subtotal,
   total,
+  deliveryType,
   onRemove,
   onCheckout,
   onContinue,
@@ -401,9 +475,10 @@ function CartDrawer({
                     <div className="font-medium">{it.title}</div>
                     <div className="text-xs text-muted-foreground">
                       {formatILS(it.price)} × {it.qty}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
+          </div>
+          </div>
+
+                        <div className="flex items-center gap-2">
                     <span className="font-semibold tabular-nums text-primary">
                       {formatILS(it.price * it.qty)}
                     </span>
@@ -420,6 +495,15 @@ function CartDrawer({
                 </li>
               ))}
             </ul>
+
+            {deliveryType === "pickup" && (
+              <div className="mt-3 rounded-lg border border-primary/15 bg-primary/5 p-3 text-xs text-muted-foreground">
+                <strong className="text-foreground">לתשומת ליבכם:</strong> הזמנות
+                עם איסוף עצמי יתאספו בכתובת {" "}
+                <span className="font-medium text-foreground">{PICKUP_ADDRESS}</span>.
+                זמני איסוף: שישי 09:00-14:00.
+              </div>
+            )}
 
             <div className="mt-4 space-y-2 rounded-xl border border-primary/10 bg-cream/60 p-3 text-sm">
               <div className="flex items-center justify-between">

@@ -42,3 +42,13 @@ export function buildWhatsAppLink(
   const cleaned = phone.replace(/\D/g, "");
   return `https://wa.me/${cleaned}?text=${encodeURIComponent(message)}`;
 }
+
+export function normalizeWhatsAppRecipient(
+  phone: string | null | undefined,
+): string | null {
+  if (!phone) return null;
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length < 7) return null;
+  if (digits.startsWith("0")) return "972" + digits.slice(1);
+  return digits;
+}

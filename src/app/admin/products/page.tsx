@@ -1,18 +1,23 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowDown,
   ArrowUp,
+  Copy,
+  Download,
   ExternalLink,
   Loader2,
   LogOut,
+  MessageSquare,
   Pencil,
   Plus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/components/ui/toaster";
 import {
   clearAdminAuth,
   isAdminAuthenticated,
@@ -20,6 +25,11 @@ import {
 import { AdminNav } from "@/components/AdminNav";
 import { calculateDiscountAmount, formatILS } from "@/lib/utils";
 import { MEMBER_DISCOUNT_PERCENT } from "@/lib/constants";
+import {
+  buildSupplierMessage,
+  buildSupplierTextFile,
+  getWeekBoundaries,
+} from "@/lib/supplier-message";
 import type { Product, SupplierAggregate } from "@/types";
 
 export default function AdminProductsPage() {
@@ -28,6 +38,17 @@ export default function AdminProductsPage() {
   const [supplier, setSupplier] = useState<SupplierAggregate[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
+  const weekBounds = useMemo(() => getWeekBoundaries(), []);
+  const supplierMessage = useMemo(
+    () =>
+      buildSupplierMessage({
+        aggregates: supplier,
+        weekStart: weekBounds.weekStart,
+        weekEnd: weekBounds.weekEnd,
+      }),
+    [supplier, weekBounds],
+  );
 
   useEffect(() => {
     if (!isAdminAuthenticated()) {
@@ -115,6 +136,33 @@ export default function AdminProductsPage() {
     }
   }
 
+  async function copyMessage() {
+    try {
+      await navigator.clipboard.writeText(supplierMessage);
+      toast({ title: "ההודעה הועתקה בהצלחה", variant: "success" });
+    } catch {
+      toast({ title: "העתקה נכשלה", variant: "error" });
+    }
+  }
+
+  function downloadMessage() {
+    const text = buildSupplierTextFile({
+      aggregates: supplier,
+      weekStart: weekBounds.weekStart,
+      weekEnd: weekBounds.weekEnd,
+    });
+    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `רשימת-הזמנה-ספקים-${new Date().toISOString().slice(0, 10)}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast({ title: "הקובץ הורד בהצלחה", variant: "success" });
+  }
+
   function logout() {
     clearAdminAuth();
     window.location.replace("/admin");
@@ -187,6 +235,34 @@ export default function AdminProductsPage() {
               ))}
             </ul>
           )}
+        </section>
+
+        <section className="rounded-xl border bg-card p-4 shadow-sm space-y-3">
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="flex items-center gap-2 text-lg font-bold">
+              <MessageSquare className="h-5 w-5 text-primary" />
+              הודעה לספק
+            </h2>
+            <span className="text-xs text-muted-foreground">
+              הודעה מוכנה לשליחה לספק — שבוע קודש
+            </span>
+          </div>
+          <Textarea
+            value={supplierMessage}
+            readOnly
+            rows={10}
+            className="font-mono text-sm"
+          />
+          <div className="flex gap-2">
+            <Button size="sm" onClick={copyMessage}>
+              <Copy className="h-4 w-4" />
+              העתק הודעה לספק
+            </Button>
+            <Button size="sm" variant="outline" onClick={downloadMessage}>
+              <Download className="h-4 w-4" />
+              הורד קובץ להודעה
+            </Button>
+          </div>
         </section>
 
         {loading ? (

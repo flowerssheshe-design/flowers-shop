@@ -87,6 +87,7 @@ export type AdminUser = {
   full_name: string | null;
   phone: string | null;
   address: string | null;
+  notification_opt_in: boolean | null;
   created_at: string | null;
   order_count: number;
   completed_count: number;
