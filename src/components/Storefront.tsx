@@ -284,20 +284,43 @@ export function Storefront({
           </h3>
           <div className="divider-gold mx-auto mt-3 h-px w-24" />
 
-          <div className="mt-8 space-y-6 text-sm leading-relaxed text-muted-foreground sm:text-base">
-            <p>
-              ב-<strong className="text-foreground">לתת מהלב</strong> אנחנו מתמחים בסידורי פרחים
-              וזרים לכל אירוע, עם דגש מיוחד על{" "}
-              <strong className="text-foreground">פרחים לכבוד שבת קודש</strong>.
-              אנו מספקים זרים עדינים ומלאים בפריחתם, נבחרים בקפידה ועדכניים
-              בכל יום רביעי וחמישי.
-            </p>
-            <p>
-              המטרה שלנו היא להביא אליכם שמחה ו�prettiness לביתכם ולחסוך לכם
-              זמן והפתעות. עם משלוח עד הבית או איסוף עצמי - העמידה על השles
-              היא שלכם.
-            </p>
-          </div>
+<div className="mt-8 space-y-6 text-sm leading-relaxed text-muted-foreground sm:text-base">
+  <p>
+    היי, אנחנו <strong className="text-foreground">דרור ונווה</strong>.
+  </p>
+  <p>
+    הכל התחיל ביום שישי אחד כשראינו כמה ההורים שלנו – משלמים על זר פרחים בסיסי לכבוד שבת. 
+    הסתכלנו על המחירים המוגזמים בחוץ והבנו שחייב להיות פה שינוי.
+  </p>
+  <p>
+    בשבילנו, פרחים ביום שישי זה לא סתם קישוט. פרחים זו הדרך הכי פשוטה להגיד תודה, להכניס אור לבית ולתת משהו קטן מכל הלב למי שאוהבים. 
+    זה כלי מטורף לשמח אנשים ולחבר בין שכנים ומשפחה.
+  </p>
+  <p>
+    החלטנו להרים את הכפפה ולפתוח את <strong className="text-foreground">"לתת מהלב"</strong> – משהו משלנו ולמען הקהילה:
+  </p>
+  
+  <ul className="list-disc space-y-2 pr-5 text-foreground">
+    <li>
+      <strong>מחירים הוגנים:</strong> בלי גזירות ובלי מחירים מנופחים של יום שישי.
+    </li>
+    <li>
+      <strong>איכות וטריות:</strong> זרים יפים, רעננים ומושקעים שבאמת מחזיקים.
+    </li>
+    <li>
+      <strong>שיא הנוחות:</strong> מזמינים מראש באינטרנט, ואוספים בקלות או מקבלים במשלוח עד הבית.
+    </li>
+  </ul>
+
+  <p>
+    בלי סיבוכים ובלי פוזות – פשוט פרחים מעולים במחיר הגיוני, כדי שכל בית יוכל להרשות לעצמו לשמח ולתת מהלב לכבוד שבת.
+  </p>
+  
+  <p className="font-semibold text-foreground pt-2">
+    שתהיה שבת שלום! <br />
+    דרור & נווה
+  </p>
+</div>
 
           <div className="mt-10 grid gap-4 sm:grid-cols-2">
             <div className="rounded-xl border border-primary/10 bg-card p-4">

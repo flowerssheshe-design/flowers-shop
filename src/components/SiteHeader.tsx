@@ -1,9 +1,16 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LogOut, ShoppingBag, User as UserIcon } from "lucide-react";
+import { LogOut, Menu, ShoppingBag } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import type { SessionUser } from "@/types";
 
@@ -15,6 +22,7 @@ type Props = {
 
 export function SiteHeader({ cartCount, onCartClick, user }: Props) {
   const router = useRouter();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   async function logout() {
     try {
@@ -26,15 +34,30 @@ export function SiteHeader({ cartCount, onCartClick, user }: Props) {
     router.refresh();
   }
 
+  const navLinks = [
+    { href: "/#store", label: "חנות" },
+    { href: "/#about", label: "אודות" },
+    { href: user ? "/profile" : "/login", label: "פרטי החשבון" },
+  ];
+
+  function closeMobileMenu() {
+    setMobileMenuOpen(false);
+  }
+
+  function handleLogout() {
+    closeMobileMenu();
+    void logout();
+  }
+
   return (
     <header className="sticky top-0 z-40 border-b border-primary/10 bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/70">
-      <div className="container flex flex-col items-center gap-3 py-3 sm:py-4">
+      <div className="container flex items-center justify-between overflow-x-hidden py-3 sm:py-4">
+        {/* Logo / Brand */}
         <Link
           href="/"
           className="flex items-center justify-center gap-3 text-center"
           aria-label="לתת מהלב - פרחים בכל שישי"
         >
-          {/* <span aria-hidden className="text-3xl sm:text-4xl">🌿</span> */}
           <span className="leading-tight">
             <span className="brand-serif inline-flex items-baseline text-[2.5rem] font-extrabold tracking-tight text-primary sm:text-[3rem] md:text-[3.5rem]">
               לתת מהלב
@@ -43,27 +66,23 @@ export function SiteHeader({ cartCount, onCartClick, user }: Props) {
               </span>
             </span>
           </span>
-          {/* <span aria-hidden className="text-3xl sm:text-4xl">🌸</span> */}
         </Link>
 
-        {/* <div className="divider-gold h-px w-40 opacity-70" /> */}
-
-        <nav
-          aria-label="ניווט ראשי"
-          className="flex w-full items-center justify-center gap-1 sm:gap-2 md:gap-4"
-        >
+        {/* Desktop navigation */}
+        <nav aria-label="ניווט ראשי" className="hidden md:flex">
           <ul className="flex items-center justify-center gap-1 sm:gap-2 md:gap-4">
-            <NavItem href="/#store" label="חנות" />
-            <NavItem href="/#about" label="אודות" />
-            <NavItem
-              href={user ? "/profile" : "/login"}
-              label="פרטי החשבון"
-            />
+            {navLinks.map((link) => (
+              <NavItem
+                key={link.href}
+                href={link.href}
+                label={link.label}
+              />
+            ))}
             {user ? (
               <li>
                 <button
                   type="button"
-                  onClick={logout}
+                  onClick={() => void logout()}
                   className="inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-sm font-medium text-foreground/80 transition hover:bg-accent hover:text-primary md:text-base"
                 >
                   <LogOut className="h-4 w-4" />
@@ -81,7 +100,9 @@ export function SiteHeader({ cartCount, onCartClick, user }: Props) {
                 aria-label="פתח עגלה"
                 className={cn(
                   "relative shrink-0 rounded-full px-3",
-                  cartCount > 0 ? "bg-primary text-primary-foreground hover:bg-primary/90" : ""
+                  cartCount > 0
+                    ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                    : "",
                 )}
               >
                 <ShoppingBag className="h-4 w-4" />
@@ -96,44 +117,74 @@ export function SiteHeader({ cartCount, onCartClick, user }: Props) {
           </ul>
         </nav>
 
-        <nav
-          aria-label="ניווט נייד"
-          className="-mx-1 flex w-full snap-x snap-mandatory gap-1 overflow-x-auto px-1 pb-1 sm:hidden"
-        >
-          <MobileItem href="/#store" label="חנות" />
-          <MobileItem
-            href={user ? "/profile" : "/login"}
-            label="פרטי החשבון"
-          />
-          {user ? (
-            <button
-              type="button"
-              onClick={logout}
-              className="snap-start shrink-0 rounded-full border border-primary/15 bg-card px-3 py-1.5 text-xs font-medium text-foreground/80 transition hover:border-primary/30 hover:bg-accent hover:text-primary"
-            >
-              התנתק
-            </button>
-          ) : (
-            <MobileItem href="/login" label="התחברות / הרשמה" />
-          )}
-          <button
+        {/* Mobile controls */}
+        <div className="flex items-center gap-2 md:hidden">
+          <Button
             type="button"
-            onClick={onCartClick}
+            variant="ghost"
+            size="sm"
             aria-label="פתח עגלה"
+            onClick={onCartClick}
             className={cn(
-              "snap-start shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition",
-              cartCount > 0 ? "bg-primary text-primary-foreground hover:bg-primary/90" : ""
+              "relative shrink-0 rounded-full px-3",
+              cartCount > 0
+                ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                : "",
             )}
           >
             <ShoppingBag className="h-4 w-4" />
             {cartCount > 0 && (
-              <span className="ms-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-gold px-1 text-[10px] font-bold text-gold-foreground">
+              <span className="absolute -end-2 -top-2 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-gold px-1.5 text-xs font-bold text-gold-foreground shadow">
                 {cartCount}
               </span>
             )}
-          </button>
-        </nav>
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            aria-label="תפריט"
+            onClick={() => setMobileMenuOpen(true)}
+          >
+            <Menu className="h-5 w-5" />
+          </Button>
+        </div>
       </div>
+
+      {/* Mobile drawer */}
+      <Dialog open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+        <DialogContent className="max-w-xs">
+          <DialogHeader>
+            <DialogTitle>תפריט</DialogTitle>
+          </DialogHeader>
+          <nav aria-label="תפריט נייד" className="mt-2 flex flex-col gap-1">
+            {navLinks.map((link) => (
+              <MobileNavItem
+                key={link.href}
+                href={link.href}
+                label={link.label}
+                onClick={closeMobileMenu}
+              />
+            ))}
+            {user ? (
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="flex items-center gap-2 rounded-full px-3 py-2 text-right text-sm font-medium text-foreground/80 transition hover:bg-accent hover:text-primary"
+              >
+                <LogOut className="h-4 w-4" />
+                התנתק
+              </button>
+            ) : (
+              <MobileNavItem
+                href="/login"
+                label="התחברות / הרשמה"
+                onClick={closeMobileMenu}
+              />
+            )}
+          </nav>
+        </DialogContent>
+      </Dialog>
     </header>
   );
 }
@@ -141,24 +192,10 @@ export function SiteHeader({ cartCount, onCartClick, user }: Props) {
 function NavItem({
   href,
   label,
-  disabled,
 }: {
   href: string;
   label: string;
-  disabled?: boolean;
 }) {
-  if (disabled) {
-    return (
-      <li>
-        <span
-          aria-disabled
-          className="cursor-not-allowed rounded-md px-2 py-1.5 text-sm font-medium text-foreground/40 md:text-base"
-        >
-          {label}
-        </span>
-      </li>
-    );
-  }
   return (
     <li>
       <Link
@@ -171,11 +208,20 @@ function NavItem({
   );
 }
 
-function MobileItem({ href, label }: { href: string; label: string }) {
+function MobileNavItem({
+  href,
+  label,
+  onClick,
+}: {
+  href: string;
+  label: string;
+  onClick: () => void;
+}) {
   return (
     <Link
       href={href}
-      className="snap-start shrink-0 rounded-full border border-primary/15 bg-card px-3 py-1.5 text-xs font-medium text-foreground/80 transition hover:border-primary/30 hover:bg-accent hover:text-primary"
+      onClick={onClick}
+      className="block w-full rounded-full px-3 py-2 text-center text-sm font-medium text-foreground/80 transition hover:bg-accent hover:text-primary"
     >
       {label}
     </Link>
