@@ -297,7 +297,7 @@ export function Storefront({
     זה כלי מטורף לשמח אנשים ולחבר בין שכנים ומשפחה.
   </p>
   <p>
-    החלטנו להרים את הכפפה ולפתוח את <strong className="text-foreground">"לתת מהלב"</strong> – משהו משלנו ולמען הקהילה:
+    החלטנו להרים את הכפפה ולפתוח את <strong className="text-foreground">&ldquo;לתת מהלב&rdquo;</strong> – משהו משלנו ולמען הקהילה:
   </p>
   
   <ul className="list-disc space-y-2 pr-5 text-foreground">
