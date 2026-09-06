@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ברכת שבת שלום - לתת מהלב</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Assistant', sans-serif; }
+    @media print {
+      body { background: white; padding: 0; }
+      .card { shadow: none; border: 1px solid #ddd; }
+    }
+  </style>
+</head>
+<body class="bg-stone-100 min-h-screen flex items-center justify-center p-4">
+
+  <!-- Card Container -->
+  <div class="card w-[380px] bg-white rounded-2xl p-6 border border-stone-200 shadow-md text-stone-800 flex flex-col justify-between">
+    
+    <!-- Top Header -->
+    <div class="text-center border-b border-stone-100 pb-3">
+      <h1 class="text-2xl font-bold text-emerald-900 tracking-wide">לתת מהלב</h1>
+      <p class="text-xs text-stone-500 font-medium mt-0.5">פרחים בכל שישי • ירוחם</p>
+    </div>
+
+    <!-- Body Text -->
+    <div class="my-4 space-y-2 text-sm leading-relaxed text-stone-700">
+      <p class="font-bold text-stone-900 text-base">שבת שלום ומבורכת! 🌸</p>
+      <p>
+        איזה כיף שהזר הזה אצלכם בבית.
+      </p>
+      <p>
+        "לתת מהלב" נולד מתתוך רצון פשוט – להביא לכל בית בירוחם פרחים טריים, יפים ומושקעים לכבוד שבת, במחיר הוגן ובלי לחץ.
+      </p>
+      <p>
+        בשבילנו, פרחים בשישי הם הדרך הכי יפה להגיד תודה ולהכניס אור ורוגע לבית.
+      </p>
+    </div>
+
+    <!-- QR & Footer Section -->
+    <div class="pt-3 border-t border-stone-100 flex items-center justify-between gap-4">
+      
+      <!-- QR Code Image -->
+      <div class="bg-stone-50 p-1.5 rounded-xl border border-stone-200 shrink-0 text-center">
+        <img 
+          src="https://api.qrserver.com/v1/create-qr-code/?size=90x90&data=https://flowers-from-the-heart.netlify.app" 
+          alt="QR Code להזמנות" 
+          class="w-20 h-20 rounded-lg"
+        />
+        <span class="text-[9px] font-bold text-stone-500 block mt-1">סורקים ומזמינים</span>
+      </div>
+
+      <!-- Sign-off -->
+      <div class="text-left text-xs space-y-1">
+        <p class="text-stone-500">שתהיה שבת שלום!</p>
+        <p class="font-bold text-emerald-950 text-sm">דרור & נווה</p>
+        <p class="text-[10px] text-stone-400">flowers-from-the-heart.netlify.app</p>
+      </div>
+
+    </div>
+
+  </div>
+
+</body>
+</html>

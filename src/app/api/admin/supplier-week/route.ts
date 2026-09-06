@@ -37,12 +37,20 @@ async function fallbackAggregation(
   since.setDate(since.getDate() - day);
   since.setHours(0, 0, 0, 0);
 
-  const { data: orders, error } = await supabase
-    .from("orders")
-    .select("items")
-    .gte("created_at", since.toISOString())
-    .neq("status", "cancelled");
-  if (error || !orders) return NextResponse.json({ aggregates: [] });
+  const [{ data: orders, error: ordersError }, { data: products }] =
+    await Promise.all([
+      supabase
+        .from("orders")
+        .select("items")
+        .gte("created_at", since.toISOString())
+        .eq("status", "approved"),
+      supabase
+        .from("products")
+        .select("id, title")
+        .eq("is_active", true),
+    ]);
+
+  if (ordersError || !orders) return NextResponse.json({ aggregates: [] });
 
   const counts = new Map<string, { title: string; qty: number }>();
   for (const o of orders) {
@@ -56,13 +64,11 @@ async function fallbackAggregation(
     }
   }
 
-  const aggregates: SupplierAggregate[] = [...counts.entries()]
-    .map(([id, v]) => ({
-      product_id: id,
-      title: v.title,
-      total_qty: v.qty,
-    }))
-    .sort((a, b) => b.total_qty - a.total_qty);
+  const aggregates: SupplierAggregate[] = (products ?? []).map((p) => ({
+    product_id: p.id,
+    title: p.title,
+    total_qty: counts.get(p.id)?.qty ?? 0,
+  }));
 
   return NextResponse.json({ aggregates });
 }

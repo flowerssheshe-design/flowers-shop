@@ -32,5 +32,7 @@ export default function EditProductPage({
   }, [params]);
 
   if (!ready || !product) return null;
-  return <ProductForm mode="edit" initial={product} />;
+  return (
+    <ProductForm mode="edit" initial={product} />
+  );
 }

@@ -31,6 +31,9 @@ export function ProductForm({ mode, initial, nextSortOrder = 0 }: Props) {
   const [priceStandard, setPriceStandard] = useState(
     initial?.price_standard ?? 0,
   );
+  const [costPrice, setCostPrice] = useState(
+    initial?.cost_price ?? 0,
+  );
   const [imageUrl, setImageUrl] = useState(initial?.image_url ?? "");
   const [isActive, setIsActive] = useState(initial?.is_active ?? true);
   const [sortOrder, setSortOrder] = useState(
@@ -95,6 +98,7 @@ export function ProductForm({ mode, initial, nextSortOrder = 0 }: Props) {
         description: description.trim() || null,
         price_standard: Number(priceStandard),
         price_member: Number(priceMember),
+        cost_price: Number(costPrice),
         image_url: imageUrl.trim() || null,
         is_active: isActive,
         sort_order: Number(sortOrder),
@@ -107,19 +111,25 @@ export function ProductForm({ mode, initial, nextSortOrder = 0 }: Props) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
+        const created = (res.ok
+          ? await res.json().catch(() => null)
+          : null) as { product?: { id: string } } | null;
+        if (!res.ok) {
+          const t = await res.json().catch(() => ({}));
+          throw new Error(t.error ?? "שמירה נכשלה");
+        }
       } else if (initial) {
         res = await fetch(`/api/admin/products/${initial.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
+        if (!res.ok) {
+          const t = await res.json().catch(() => ({}));
+          throw new Error(t.error ?? "שמירה נכשלה");
+        }
       } else {
         throw new Error("חסרים נתוני מוצר");
-      }
-
-      if (!res.ok) {
-        const t = await res.json().catch(() => ({}));
-        throw new Error(t.error ?? "שמירה נכשלה");
       }
 
       router.push("/admin/products");
@@ -179,18 +189,30 @@ export function ProductForm({ mode, initial, nextSortOrder = 0 }: Props) {
             onChange={(e) => setPriceStandard(Number(e.target.value))}
             required
           />
-          <div className="text-xs text-muted-foreground">
-            מחיר לקוח קבוע:{" "}
-            <span className="font-medium text-foreground">
-              {priceStandard > 0 ? formatILS(priceMember) : "—"}
-            </span>{" "}
-            (הנחה של {MEMBER_DISCOUNT_PERCENT}% — חיסכון{" "}
-            {priceStandard > 0 ? formatILS(discountAmount) : "—"})
+           <div className="text-xs text-muted-foreground">
+             מחיר לקוח קבוע:{" "}
+             <span className="font-medium text-foreground">
+               {priceStandard > 0 ? formatILS(priceMember) : "—"}
+             </span>{" "}
+             (הנחה של {MEMBER_DISCOUNT_PERCENT}% — חיסכון{" "}
+             {priceStandard > 0 ? formatILS(discountAmount) : "—"})
+           </div>
           </div>
-        </div>
 
-        <div className="space-y-2 rounded-lg border p-3">
-          <Label>תמונה</Label>
+           <div className="space-y-2 rounded-lg border p-3">
+             <Label htmlFor="cp">מחיר עלות לספק (₪)</Label>
+             <Input
+               id="cp"
+               type="number"
+               min={0}
+               step="0.01"
+               value={costPrice}
+               onChange={(e) => setCostPrice(Number(e.target.value))}
+             />
+           </div>
+
+           <div className="space-y-2 rounded-lg border p-3">
+             <Label>תמונה</Label>
           <div className="relative aspect-[4/3] w-full overflow-hidden rounded-md bg-muted">
             <Image
               src={imageUrl || FALLBACK}

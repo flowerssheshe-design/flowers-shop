@@ -9,7 +9,7 @@ export const revalidate = 0;
 
 const PatchSchema = z.object({
   status: z
-    .enum(["pending", "confirmed", "completed", "cancelled"])
+    .enum(["pending_payment", "approved", "completed", "cancelled"])
     .optional(),
   customer_name: z.string().min(2).max(100).optional(),
   customer_phone: z.string().min(8).max(30).optional(),
@@ -46,7 +46,7 @@ export async function PATCH(
     return NextResponse.json({ error: "נתונים לא תקינים" }, { status: 400 });
   }
 
-  const canEditStatuses: Array<string> = ["pending", "confirmed"];
+  const canEditStatuses: Array<string> = ["pending_payment", "approved"];
   if (
     parsed.data.status &&
     parsed.data.status !== "cancelled" &&

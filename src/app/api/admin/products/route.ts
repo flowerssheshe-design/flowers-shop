@@ -40,6 +40,7 @@ const ProductSchema = z.object({
   description: z.string().max(2000).nullish(),
   price_standard: z.number().min(0).max(100000),
   price_member: z.number().min(0).max(100000),
+  cost_price: z.number().min(0).max(100000),
   image_url: z.string().url().max(2000).nullish(),
   is_active: z.boolean(),
   sort_order: z.number().int().min(0).max(10000),

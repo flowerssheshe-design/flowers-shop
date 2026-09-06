@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const ACTIVE_DELIVERY_STATUSES: Order["status"][] = ["pending", "confirmed"];
+const ACTIVE_DELIVERY_STATUSES: Order["status"][] = ["pending_payment", "approved"];
 
 function escapeCsvField(value: string): string {
   const v = value === null || value === undefined ? "" : String(value);

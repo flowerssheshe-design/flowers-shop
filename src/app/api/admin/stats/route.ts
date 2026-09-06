@@ -12,6 +12,8 @@ const EMPTY_KPI: WeeklyKpi = {
   total_revenue: 0,
   delivery_revenue: 0,
   products_revenue: 0,
+  total_cost: 0,
+  gross_profit: 0,
   orders_count: 0,
   pickup_count: 0,
   delivery_count: 0,
@@ -19,6 +21,9 @@ const EMPTY_KPI: WeeklyKpi = {
   new_customers_count: 0,
   returning_customers_count: 0,
   avg_order_value: 0,
+  cancelled_orders_count: 0,
+  cancelled_orders_value: 0,
+  visitors_count: 0,
 };
 
 function emptyKpi(): WeeklyKpi {
@@ -40,44 +45,53 @@ export async function GET() {
   try {
     const admin = createAdminClient();
 
-    const { data: kpiRows, error: kpiError } = await admin.rpc(
-      "weekly_stats",
-      {},
-    );
-    if (kpiError) console.error("weekly_stats error:", kpiError);
-
-    const kpi: WeeklyKpi = (kpiRows as WeeklyKpi[] | null)?.[0]
-      ? (kpiRows as WeeklyKpi[])[0]
-      : emptyKpi();
-
-    // Previous week (last 7 days excluding current week) for comparison.
     const since = new Date();
-    const day = since.getDay(); // 0 = Sunday
+    const day = since.getUTCDay(); // 0 = Sunday
     const weekStart = new Date(since);
-    weekStart.setDate(since.getDate() - day);
-    weekStart.setHours(0, 0, 0, 0);
+    weekStart.setUTCDate(since.getUTCDate() - day);
+    weekStart.setUTCHours(0, 0, 0, 0);
     const prevStart = new Date(weekStart);
-    prevStart.setDate(prevStart.getDate() - 7);
+    prevStart.setUTCDate(prevStart.getUTCDate() - 7);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setUTCDate(weekStart.getUTCDate() + 7);
+    const prevEnd = new Date(prevStart);
+    prevEnd.setUTCDate(prevStart.getUTCDate() + 7);
 
-    const { data: prevRows } = await admin.rpc("weekly_stats", {
-      week_start: prevStart.toISOString(),
-    });
-    const previousKpi: WeeklyKpi = (prevRows as WeeklyKpi[] | null)?.[0]
-      ? (prevRows as WeeklyKpi[])[0]
+    const weekStartISO = weekStart.toISOString();
+    const prevStartISO = prevStart.toISOString();
+    const weekEndISO = weekEnd.toISOString();
+    const prevEndISO = prevEnd.toISOString();
+
+    const [{ data: finRows }, { data: prevFinRows }, { data: visitorCount }] = await Promise.all([
+      admin.rpc("weekly_financial_summary", { week_start: weekStartISO }),
+      admin.rpc("weekly_financial_summary", { week_start: prevStartISO }),
+      admin.rpc("weekly_visitor_count", { week_start: weekStartISO }),
+    ]);
+
+    const kpi: WeeklyKpi = (finRows as WeeklyKpi[] | null)?.[0]
+      ? (finRows as WeeklyKpi[])[0]
       : emptyKpi();
 
-    const weekEnd = new Date(weekStart);
-    weekEnd.setDate(weekStart.getDate() + 7);
-    const { data: topRows } = await admin.rpc("weekly_top_products", {
-      week_start: weekStart.toISOString(),
-      week_end: weekEnd.toISOString(),
-    });
+    const previousKpi: WeeklyKpi = (prevFinRows as WeeklyKpi[] | null)?.[0]
+      ? (prevFinRows as WeeklyKpi[])[0]
+      : emptyKpi();
+
+    previousKpi.visitors_count = 0;
+
+    kpi.visitors_count = Number((visitorCount as bigint[] | null)?.[0] ?? 0);
+
+    const [{ data: topRows }, { data: supplierRows }] = await Promise.all([
+      admin.rpc("weekly_top_products_with_costs", {
+        week_start: weekStartISO,
+        week_end: weekEndISO,
+      }),
+      admin.rpc("supplier_week_aggregate", { week_start: weekStartISO }),
+    ]);
+
     const topProducts = (topRows as TopProduct[] | null) ?? [];
 
-    const { data: supplierRows } = await admin.rpc("supplier_week_aggregate");
     const suppliers = (supplierRows as TopProduct[] | null) ?? [];
 
-    // Member ratio: orders by is_member in current week
     const memberOrdersCount = kpi.member_orders_count;
     const total = kpi.orders_count || 0;
     const memberRatio = {
@@ -86,7 +100,6 @@ export async function GET() {
       percent: total > 0 ? Math.round((Number(memberOrdersCount) / total) * 100) : 0,
     };
 
-    // Fulfillment split derived from KPI counts
     const fulfillment = {
       pickup: kpi.pickup_count,
       delivery: kpi.delivery_count,

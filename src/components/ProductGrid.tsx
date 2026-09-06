@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { ProductCard } from "@/components/ProductCard";
 import type { Product } from "@/types";

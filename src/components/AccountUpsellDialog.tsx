@@ -6,7 +6,6 @@ import {
   LogIn,
   Sparkles,
   Store as StoreIcon,
-  X,
 } from "lucide-react";
 import {
   Dialog,
@@ -17,7 +16,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { formatILS } from "@/lib/utils";
 import { CLUB_DISCOUNT_THRESHOLD, MEMBER_DISCOUNT_PERCENT } from "@/types";
-import { useEffect, useState } from "react";
 
 type Props = {
   open: boolean;
@@ -36,33 +34,6 @@ export function AccountUpsellDialog({
   onLogin,
   onContinueAsGuest,
 }: Props) {
-  const [remembered, setRemembered] = useState(false);
-
-  useEffect(() => {
-    if (open) {
-      try {
-        setRemembered(
-          sessionStorage.getItem("flowers-upsell-dismissed") === "1",
-        );
-      } catch {
-        // ignore
-      }
-    }
-  }, [open]);
-
-  function dismiss() {
-    onOpenChange(false);
-  }
-
-  function guest() {
-    try {
-      sessionStorage.setItem("flowers-upsell-dismissed", "1");
-    } catch {
-      // ignore
-    }
-    onContinueAsGuest();
-  }
-
   const futureSavings = Math.round(
     (cartSubtotal * MEMBER_DISCOUNT_PERCENT) / 100,
   );
@@ -125,18 +96,12 @@ export function AccountUpsellDialog({
               variant="ghost"
               size="sm"
               className="w-full"
-              onClick={guest}
+              onClick={onContinueAsGuest}
             >
               <StoreIcon className="h-4 w-4" />
               המשך להזמנה כאורח (ללא חשבון)
             </Button>
           </div>
-
-          {remembered && (
-            <p className="text-center text-[11px] text-muted-foreground">
-              תמיד ניתן לפתוח חשבון אחר כך מהפרופיל שלכם.
-            </p>
-          )}
         </div>
       </DialogContent>
     </Dialog>

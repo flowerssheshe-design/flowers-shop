@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import { useSearchParams } from "next/navigation";
 import {
   CheckCircle2,
@@ -68,7 +67,6 @@ export function Storefront({
   qualifiesForMember,
   completedOrderCount,
 }: Props) {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [qty, setQty] = useState<Record<string, number>>({});
   const [cartOpen, setCartOpen] = useState(false);
@@ -85,6 +83,8 @@ export function Storefront({
   const [deliveryType, setDeliveryType] = useState<DeliveryType>("pickup");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<"bit" | "paybox" | "cash" | "">("");
+  const [greetingNote, setGreetingNote] = useState("");
 
   // Keep form in sync when user logs in/out
   useEffect(() => {
@@ -111,9 +111,8 @@ export function Storefront({
       } catch {
         // ignore
       }
-      router.refresh();
     }
-  }, [searchParams, router]);
+  }, [searchParams]);
 
   // Cart items always priced per the user's qualification status.
   const cartItems: CartItem[] = useMemo(() => {
@@ -154,7 +153,8 @@ export function Storefront({
     name.trim().length >= 2 &&
     phone.trim().length >= 9 &&
     cartItems.length > 0 &&
-    (deliveryType === "pickup" || address.trim().length >= 4);
+    (deliveryType === "pickup" || address.trim().length >= 4) &&
+    paymentMethod !== "";
 
   async function submitOrder() {
     if (!canSubmit || submitting) return;
@@ -175,6 +175,9 @@ export function Storefront({
           delivery_fee: deliveryFee,
           is_member: qualifiesForMember,
           notes: notes.trim() || null,
+          fulfillment_type: deliveryType,
+          payment_method: paymentMethod || undefined,
+          greeting_note: greetingNote.trim() || null,
         }),
       });
       if (!res.ok) {
@@ -186,7 +189,6 @@ export function Storefront({
       setCheckoutOpen(false);
       setCartOpen(false);
       setQty({});
-      router.refresh();
     } catch (e) {
       setSubmitError(e instanceof Error ? e.message : "שגיאה לא ידועה");
     } finally {
@@ -197,20 +199,6 @@ export function Storefront({
   function openCheckout() {
     if (cartItems.length === 0) return;
     if (!user) {
-      // Guest: show the account upsell first (once) so they can pick
-      // between signing up / logging in or continuing as a guest.
-      let dismissed = false;
-      try {
-        dismissed = sessionStorage.getItem("flowers-upsell-dismissed") === "1";
-      } catch {
-        // ignore
-      }
-      if (dismissed) {
-        // They already chose to continue without an account — honor that
-        // and send them straight to checkout instead of forcing a login.
-        continueAsGuest();
-        return;
-      }
       setUpsellOpen(true);
       return;
     }
@@ -231,6 +219,7 @@ export function Storefront({
       <main className="min-h-screen bg-background">
         <SiteHeader cartCount={0} onCartClick={() => undefined} user={user} />
         <OrderConfirmation
+          paymentMethod={submittedOrder.payment_method}
           order={submittedOrder}
           bitNumber={BIT_NUMBER}
           payboxNumber={PAYBOX_NUMBER}
@@ -405,8 +394,7 @@ export function Storefront({
         initialMode={loginMode}
         onSuccess={() => {
           setLoginOpen(false);
-          // Re-pull server data so user & discount status refresh.
-          router.refresh();
+          window.location.reload();
         }}
       />
 
@@ -452,6 +440,10 @@ export function Storefront({
             setCheckoutOpen(false);
             setCartOpen(true);
           }}
+          paymentMethod={paymentMethod}
+          setPaymentMethod={setPaymentMethod}
+          greetingNote={greetingNote}
+          setGreetingNote={setGreetingNote}
         />
       </Dialog>
     </main>
@@ -591,6 +583,10 @@ type CheckoutDialogProps = {
   submitError: string | null;
   qualifiesForMember: boolean;
   onBackToCart: () => void;
+  paymentMethod: string;
+  setPaymentMethod: (v: "bit" | "paybox" | "cash" | "") => void;
+  greetingNote: string;
+  setGreetingNote: (v: string) => void;
 };
 
 function CheckoutDialog(props: CheckoutDialogProps) {
@@ -613,6 +609,10 @@ function CheckoutDialog(props: CheckoutDialogProps) {
     submitError,
     qualifiesForMember,
     onBackToCart,
+    paymentMethod,
+    setPaymentMethod,
+    greetingNote,
+    setGreetingNote,
   } = props;
 
   const deliveryFee = deliveryType === "delivery" ? DELIVERY_FEE : 0;
@@ -720,7 +720,63 @@ function CheckoutDialog(props: CheckoutDialogProps) {
               placeholder="כרטיס ברכה, העדפות צבעים…"
               rows={2}
             />
+  ﻿        </div>
+        </div>
+
+        {/* Greeting note */}
+        <div className='mt-4 space-y-1.5'>
+          <Label htmlFor='co-greeting'>
+            <MessageSquare className='me-1 inline h-3.5 w-3.5' />
+            הוסף מכתב / ברכה לזר
+          </Label>
+          <Textarea
+            id='co-greeting'
+            value={greetingNote}
+            onChange={(e) => setGreetingNote(e.target.value)}
+            placeholder='כרטיס ברכה, העדפות צבעים…'
+            rows={2}
+          />
+        </div>
+
+        {/* Payment method */}
+        <div className='mt-4 space-y-2'>
+          <Label>אמצעי תשלום</Label>
+          <div className='grid grid-cols-1 gap-2'>
+            <button
+              type='button'
+              onClick={() => setPaymentMethod("bit")}
+              className={`flex items-center justify-between rounded-xl border p-3 text-sm font-medium transition ${paymentMethod === "bit"
+                ? "border-primary bg-primary text-primary-foreground shadow-sm"
+                : "border-primary/15 bg-card hover:bg-accent"
+              }`}
+            >
+              <span>ביט</span>
+              <span className='text-xs opacity-80'>תשלום מהיר</span>
+            </button>
+            <button
+              type='button'
+              disabled
+              className='flex items-center justify-between rounded-xl border border-primary/15 bg-muted p-3 text-sm text-muted-foreground opacity-70'
+            >
+              <span>PayBox</span>
+              <span className='text-xs'>בקרוב</span>
+            </button>
+            <button
+              type='button'
+              onClick={() => deliveryType === "pickup" && setPaymentMethod("cash")}
+              disabled={deliveryType !== "pickup"}
+              className={`flex items-center justify-between rounded-xl border p-3 text-sm font-medium transition ${paymentMethod === "cash"
+                ? "border-primary bg-primary text-primary-foreground shadow-sm"
+                : "border-primary/15 bg-card hover:bg-accent"
+              } ${deliveryType !== "pickup" ? "opacity-50 cursor-not-allowed" : ""}`}
+            >
+              <span>מזומן</span>
+              <span className='text-xs opacity-80'>באיסוף עצמי</span>
+            </button>
           </div>
+          {deliveryType !== "pickup" && (
+            <p className='text-xs text-muted-foreground'>תשלום במזומן זמין רק לאיסוף עצמי.</p>
+          )}
         </div>
 
         {/* Order summary */}
@@ -806,7 +862,7 @@ function CheckoutDialog(props: CheckoutDialogProps) {
         </Button>
         {!canSubmit && cartItems.length > 0 && (
           <p className="text-center text-xs text-muted-foreground">
-            יש למלא שם, טלפון וכתובת (למשלוח).
+            יש למלא שם, טלפון, כתובת (למשלוח) ואמצעי תשלום.
           </p>
         )}
       </div>

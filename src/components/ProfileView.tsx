@@ -30,16 +30,16 @@ type Props = {
 };
 
 const STATUS_LABEL: Record<Order["status"], string> = {
-  pending: "ממתינה",
-  confirmed: "אושרה",
+  pending_payment: "ממתינה",
+  approved: "אושרה",
   completed: "הושלמה",
   cancelled: "בוטלה",
   archived: "בארכיון",
 };
 
 const STATUS_COLOR: Record<Order["status"], string> = {
-  pending: "bg-amber-100 text-amber-800 border-amber-200",
-  confirmed: "bg-blue-100 text-blue-800 border-blue-200",
+  pending_payment: "bg-amber-100 text-amber-800 border-amber-200",
+  approved: "bg-blue-100 text-blue-800 border-blue-200",
   completed: "bg-emerald-100 text-emerald-800 border-emerald-200",
   cancelled: "bg-rose-100 text-rose-800 border-rose-200",
   archived: "bg-slate-100 text-slate-700 border-slate-200",
@@ -427,7 +427,7 @@ export function ProfileView({
                            </span>
                          </td>
                          <td className="px-2 py-3">
-                           {["pending", "confirmed"].includes(o.status) ? (
+                            {["pending_payment", "approved"].includes(o.status) ? (
                              <Button
                                variant="ghost"
                                size="sm"

@@ -63,7 +63,7 @@ export async function GET() {
       }>) {
         const prev = countMap.get(o.user_id) ?? { orders: 0, completed: 0 };
         prev.orders += 1;
-        if (o.status === "confirmed" || o.status === "completed") {
+        if (o.status === "approved" || o.status === "completed") {
           prev.completed += 1;
         }
         countMap.set(o.user_id, prev);

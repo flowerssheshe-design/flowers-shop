@@ -13,6 +13,7 @@ import {
   MessageSquare,
   Pencil,
   Plus,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -36,6 +37,7 @@ export default function AdminProductsPage() {
   const [ready, setReady] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [supplier, setSupplier] = useState<SupplierAggregate[]>([]);
+  const [supplierAdjustments, setSupplierAdjustments] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
@@ -43,11 +45,16 @@ export default function AdminProductsPage() {
   const supplierMessage = useMemo(
     () =>
       buildSupplierMessage({
-        aggregates: supplier,
+        aggregates: supplier
+          .map((s) => ({
+            ...s,
+            total_qty: Math.max(0, s.total_qty + (supplierAdjustments[s.product_id] ?? 0)),
+          }))
+          .filter((a) => a.total_qty > 0),
         weekStart: weekBounds.weekStart,
         weekEnd: weekBounds.weekEnd,
       }),
-    [supplier, weekBounds],
+    [supplier, supplierAdjustments, weekBounds],
   );
 
   useEffect(() => {
@@ -72,7 +79,14 @@ export default function AdminProductsPage() {
       setProducts(productsData.products ?? []);
       if (b.ok) {
         const sd = (await b.json()) as { aggregates: SupplierAggregate[] };
-        setSupplier(sd.aggregates ?? []);
+        const aggregates = sd.aggregates ?? [];
+        const activeProducts = (productsData.products ?? []).filter((p) => p.is_active);
+        const aggregateMap = new Map(aggregates.map((a) => [a.product_id, a]));
+        const merged: SupplierAggregate[] = activeProducts.map((p) => {
+          const existing = aggregateMap.get(p.id);
+          return existing ?? { product_id: p.id, title: p.title, total_qty: 0 };
+        });
+        setSupplier(merged);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "שגיאה");
@@ -124,7 +138,7 @@ export default function AdminProductsPage() {
   async function softDelete(p: Product) {
     if (!confirm(`להעביר את "${p.title}" ללא פעיל?`)) return;
     setProducts((prev) =>
-      prev.map((x) => (x.id === p.id ? { ...x, is_active: false } : x)),
+      prev.map((x) => (x.id === p.id ? { ...x, is_active: !p.is_active } : x)),
     );
     try {
       await fetch(`/api/admin/products/${p.id}`, {
@@ -213,10 +227,41 @@ export default function AdminProductsPage() {
 
         <section className="rounded-xl border bg-card p-4 shadow-sm">
           <div className="mb-2 flex items-center justify-between">
-            <h2 className="font-semibold">הזמנת ספקים — השבוע</h2>
-            <span className="text-xs text-muted-foreground">
-              ראשון–שבת
-            </span>
+            <h2 className="font-semibold">תכנון הזמנת ספקים — השבוע</h2>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">
+                אישור הזמנה קובע מלאי בסיס ליום שישי
+              </span>
+              <Button
+                size="sm"
+                onClick={async () => {
+                  if (!supplier.length) return;
+                  if (!confirm(`אשר הזמנת ספק?\nזה קבע את המלאי החי לכל מוצר בהתאם לכמויות בטבלה (אישורים + מלאי נוסף).`)) return;
+                  setLoading(true);
+                   try {
+                     for (const s of supplier) {
+                       const adjustment = supplierAdjustments[s.product_id] ?? 0;
+                       const qty = Math.max(0, s.total_qty + adjustment);
+                       if (qty <= 0) continue;
+                       await fetch("/api/inventory", {
+                         method: "PATCH",
+                         headers: { "Content-Type": "application/json" },
+                         body: JSON.stringify({ product_id: s.product_id, live_stock_count: qty }),
+                       });
+                     }
+                    toast({ title: "המלאי עודכן לפי הזמנת הספק", variant: "success" });
+                    setSupplierAdjustments({});
+                    await load();
+                  } catch {
+                    toast({ title: "עדכון מלאי נכשל", variant: "error" });
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+              >
+                אשר הזמנה
+              </Button>
+            </div>
           </div>
           {supplier.length === 0 ? (
             <p className="text-sm text-muted-foreground">
@@ -224,17 +269,45 @@ export default function AdminProductsPage() {
             </p>
           ) : (
             <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {supplier.map((s) => (
-                <li
-                  key={s.product_id}
-                  className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2 text-sm"
-                >
-                  <span className="font-medium">{s.title}</span>
-                  <span className="font-bold tabular-nums text-primary">
-                    {s.total_qty}×
-                  </span>
-                </li>
-              ))}
+              {supplier.map((s) => {
+                const adjustment = supplierAdjustments[s.product_id] ?? 0;
+                const total = Math.max(0, s.total_qty + adjustment);
+                return (
+                  <li
+                    key={s.product_id}
+                    className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2 text-sm"
+                  >
+                    <span className="font-medium">{s.title}</span>
+                    <div className="flex items-center gap-1 text-xs">
+                      <span className="text-muted-foreground">
+                        {s.total_qty} הזמנות שאושרו
+                      </span>
+                      <span className="text-muted-foreground">+</span>
+                      <input
+                        type="number"
+                        min={0}
+                        className="w-14 text-center border rounded px-1"
+                        value={adjustment}
+                        onChange={(e) => {
+                          const val = Math.max(0, parseInt(e.target.value, 10) || 0);
+                          setSupplierAdjustments((prev) => {
+                            if (val === 0) {
+                              const next = { ...prev };
+                              delete next[s.product_id];
+                              return next;
+                            }
+                            return { ...prev, [s.product_id]: val };
+                          });
+                        }}
+                      />
+                      <span className="text-muted-foreground">=</span>
+                      <span className="font-semibold tabular-nums">
+                        {total}
+                      </span>
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </section>
@@ -275,15 +348,18 @@ export default function AdminProductsPage() {
           <section className="overflow-hidden rounded-xl border bg-card shadow-sm">
             <table className="w-full text-sm">
                <thead className="bg-muted/50 text-start text-xs uppercase text-muted-foreground">
-                 <tr>
-                   <th className="p-3 text-start">שם</th>
-                   <th className="p-3 text-start">מחיר ליחידה</th>
-                   <th className="p-3 text-start">הנחה %{MEMBER_DISCOUNT_PERCENT}</th>
-                   <th className="p-3 text-start">מחיר לקוח קבוע</th>
-                   <th className="p-3 text-start">פעיל</th>
-                   <th className="p-3 text-start">סדר</th>
-                   <th className="p-3 text-start">פעולות</th>
-                 </tr>
+                  <tr>
+                    <th className="p-3 text-start">שם</th>
+                    <th className="p-3 text-start">מחיר ליחידה</th>
+                    <th className="p-3 text-start">הנחה %{MEMBER_DISCOUNT_PERCENT}</th>
+                    <th className="p-3 text-start">מחיר לקוח קבוע</th>
+                    <th className="p-3 text-start">מחיר עלות</th>
+                    <th className="p-3 text-start">רווח ליחידה</th>
+                    <th className="p-3 text-start">אחוז רווח</th>
+                    <th className="p-3 text-start">פעיל</th>
+                    <th className="p-3 text-start">סדר</th>
+                    <th className="p-3 text-start">פעולות</th>
+                  </tr>
                </thead>
               <tbody>
                 {products.map((p, idx) => (
@@ -298,13 +374,22 @@ export default function AdminProductsPage() {
                         {MEMBER_DISCOUNT_PERCENT}%
                       </div>
                     </td>
-                    <td className="p-3 tabular-nums font-medium text-primary">
-                      {formatILS(p.price_member)}
-                      <div className="text-xs text-muted-foreground font-normal">
-                        (חישוב אוטומטי)
-                      </div>
-                    </td>
-                    <td className="p-3">
+                     <td className="p-3 tabular-nums font-medium text-primary">
+                       {formatILS(p.price_member)}
+                       <div className="text-xs text-muted-foreground font-normal">
+                         (חישוב אוטומטי)
+                       </div>
+                     </td>
+                     <td className="p-3 tabular-nums">{formatILS(p.cost_price)}</td>
+                     <td className="p-3 tabular-nums">
+                       {formatILS(Math.max(0, p.price_standard - p.cost_price))}
+                     </td>
+                     <td className="p-3 tabular-nums">
+                       {p.price_standard > 0
+                         ? `${Math.round(((p.price_standard - p.cost_price) / p.price_standard) * 100)}%`
+                         : "—"}
+                     </td>
+                     <td className="p-3">
                       <Switch
                         checked={p.is_active}
                         onCheckedChange={() => toggleActive(p)}
@@ -335,32 +420,44 @@ export default function AdminProductsPage() {
                         </Button>
                       </div>
                     </td>
-                    <td className="p-3">
-                      <div className="flex items-center gap-1">
-                        <Button
-                          asChild
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                        >
-                          <Link href={`/admin/products/${p.id}/edit`}>
-                            <Pencil className="h-4 w-4" />
-                          </Link>
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => softDelete(p)}
-                        >
-                          השבת
-                        </Button>
-                      </div>
-                    </td>
+                      <td className="p-3">
+                        <div className="flex items-center gap-1">
+                          <Button
+                            asChild
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                          >
+                            <Link href={`/admin/products/${p.id}/edit`}>
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Link>
+                          </Button>
+                          <Button
+                            asChild
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-xs"
+                          >
+                            <Link href={`/admin/products/${p.id}/edit`}>
+                              עריכה
+                            </Link>
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            aria-label={`מחק המוצר ${p.id}`}
+                            title="מחק"
+                            onClick={() => softDelete(p)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                          </Button>
+                        </div>
+                      </td>
                   </tr>
                 ))}
                 {products.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="p-6 text-center text-muted-foreground">
+                    <td colSpan={9} className="p-6 text-center text-muted-foreground">
                       אין מוצרים עדיין. לחצו &quot;מוצר חדש&quot;.
                     </td>
                   </tr>

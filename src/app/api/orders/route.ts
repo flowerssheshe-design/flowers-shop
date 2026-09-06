@@ -1,8 +1,10 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SUPABASE_CONFIGURED, CLUB_DISCOUNT_THRESHOLD } from "@/lib/constants";
+import { isLiveStallPhase } from "@/lib/cycleTime";
+import type { Order } from "@/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,6 +28,9 @@ const BodySchema = z.object({
   delivery_fee: z.number().min(0).max(10000),
   is_member: z.boolean(),
   notes: z.string().max(500).nullish(),
+  fulfillment_type: z.enum(["delivery", "pickup"]).optional(),
+  payment_method: z.enum(["bit", "paybox", "cash"]).optional(),
+  greeting_note: z.string().max(1000).nullish(),
 });
 
 export async function POST(req: Request) {
@@ -59,15 +64,16 @@ export async function POST(req: Request) {
     );
   }
 
-  // Guest or logged-in checkout. user_id is null for guests; orders are
-  // tracked by customer_name + customer_phone instead.
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Verify member status server-side from orders count (>= 3 → qualifies)
-  // only for logged-in users. Guests never qualify (no history).
+  let status: Order["status"] = "pending_payment";
+  if (body.payment_method === "cash" && (body.fulfillment_type ?? body.delivery_type) === "pickup") {
+    status = "approved";
+  }
+
   let qualifies = false;
   if (user) {
     try {
@@ -78,6 +84,25 @@ export async function POST(req: Request) {
       qualifies = Number(count ?? 0) >= CLUB_DISCOUNT_THRESHOLD;
     } catch {
       qualifies = false;
+    }
+  }
+
+  let inventoryDeducted = false;
+  if (isLiveStallPhase() && body.items.length > 0) {
+    const admin = createAdminClient();
+    for (const item of body.items) {
+      // Atomic check-and-decrement; returns NULL when stock is insufficient.
+      const { data: after, error: decErr } = await admin.rpc("decrement_inventory", {
+        p_product_id: item.productId,
+        p_qty: item.qty,
+      });
+      if (decErr || after === null || after === undefined) {
+        return NextResponse.json(
+          { error: `המוצר "${item.title}" אזל מהמלאי` },
+          { status: 409 },
+        );
+      }
+      inventoryDeducted = true;
     }
   }
 
@@ -96,6 +121,11 @@ export async function POST(req: Request) {
         delivery_fee: body.delivery_fee,
         is_member: qualifies,
         notes: body.notes ?? null,
+        status,
+        fulfillment_type: body.fulfillment_type ?? body.delivery_type,
+        payment_method: body.payment_method ?? null,
+        greeting_note: body.greeting_note ?? null,
+        inventory_deducted: inventoryDeducted,
       })
       .select("*")
       .single();
@@ -108,7 +138,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // Best-effort: update profile with latest contact info if logged in.
     if (user) {
       try {
         await admin

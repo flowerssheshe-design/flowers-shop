@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Image from "next/image";
 import { Minus, Plus, ShoppingBag } from "lucide-react";
@@ -9,6 +9,7 @@ import {
   MEMBER_DISCOUNT_PERCENT,
   type Product,
 } from "@/types";
+import { isPreorderPhase } from "@/lib/cycleTime";
 
 type Props = {
   product: Product;
@@ -31,6 +32,8 @@ export function ProductCard({ product, qty, onChange, qualifiesForMember }: Prop
           100,
       )
     : 0;
+
+  const inPreorder = isPreorderPhase();
 
   return (
     <article className="group flex flex-col overflow-hidden rounded-2xl border border-primary/10 bg-card shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">
@@ -114,14 +117,9 @@ export function ProductCard({ product, qty, onChange, qualifiesForMember }: Prop
 
         <div className="mt-auto pt-1">
           {qty === 0 ? (
-            <Button
-              variant="default"
-              className="w-full rounded-full shadow-sm"
-              onClick={() => onChange(1)}
-              aria-label={`הזמנה מראש של ${product.title}`}
-            >
+            <Button variant="default" className="w-full rounded-full shadow-sm" onClick={() => onChange(1)}>
               <ShoppingBag className="h-4 w-4" />
-              הזמנה מראש
+              {inPreorder ? "הזמנה מראש" : "הזמנה"}
             </Button>
           ) : (
             <div className="flex items-center justify-between rounded-full border border-primary/20 bg-primary/5 px-2 py-1">

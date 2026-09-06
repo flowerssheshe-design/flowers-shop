@@ -4,12 +4,13 @@ import { useRouter } from "next/navigation";
 import { SiteHeader } from "@/components/SiteHeader";
 import { LoginDialog } from "@/components/LoginDialog";
 import { Sparkles } from "lucide-react";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { CLUB_DISCOUNT_THRESHOLD } from "@/types";
 
 export function LoginPageView() {
   const router = useRouter();
   const [open, setOpen] = useState(true);
+  const loggedInRef = useRef(false);
 
   return (
     <main className="min-h-screen bg-background">
@@ -43,9 +44,14 @@ export function LoginPageView() {
         open={open}
         onOpenChange={(v) => {
           setOpen(v);
-          if (!v) router.push("/");
+          if (!v && !loggedInRef.current) {
+            router.push("/");
+          }
         }}
-        onSuccess={() => router.push("/profile")}
+        onSuccess={() => {
+          loggedInRef.current = true;
+          window.location.href = "/profile";
+        }}
       />
     </main>
   );

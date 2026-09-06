@@ -1,4 +1,4 @@
-import { Suspense } from "react";
+﻿import { Suspense } from "react";
 import { Storefront } from "@/components/Storefront";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionUser, getUserOrderStats } from "@/lib/auth";

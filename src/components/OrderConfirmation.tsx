@@ -32,9 +32,10 @@ type Props = {
   order: Order;
   bitNumber?: string;
   payboxNumber?: string;
+  paymentMethod?: string;
 };
 
-export function OrderConfirmation({ order, bitNumber, payboxNumber }: Props) {
+export function OrderConfirmation({ order, bitNumber, payboxNumber, paymentMethod }: Props) {
   const items = Array.isArray(order.items) ? order.items : [];
   const lines = items
     .map((it) => `• ${it.title} x${it.qty} — ${formatILS(it.price * it.qty)}`)
@@ -104,38 +105,35 @@ export function OrderConfirmation({ order, bitNumber, payboxNumber }: Props) {
             ? `משלוח ל: ${order.delivery_address}`
             : `איסוף עצמי - ${PICKUP_ADDRESS}`}
         </div>
-      </div>
 
-      {(bitNumber || payboxNumber) && (
+      </div>
+      {paymentMethod === "bit" && bitNumber && (
         <div className="rounded-xl border-2 border-primary/30 bg-primary/5 p-4 shadow-sm">
-          <h2 className="mb-2 font-semibold text-primary">
-            העברת תשלום ביט / פייבוקס
-          </h2>
-          {bitNumber ? (
-            <div className="mb-1 text-sm">
-              <span className="font-medium">ביט:</span>{" "}
+          <h2 className="mb-2 font-semibold text-primary">תשלום בביט</h2>
+          <div className="mb-1 text-sm">
+            <span className="font-medium">ביט:</span>{" "}
               <span dir="ltr" className="tabular-nums">
                 {bitNumber}
               </span>
               <CopyButton value={bitNumber} />
             </div>
-          ) : null}
-          {payboxNumber ? (
-            <div className="mb-1 text-sm">
-              <span className="font-medium">פייבוקס:</span>{" "}
-              <span dir="ltr" className="tabular-nums">
-                {payboxNumber}
-              </span>
-              <CopyButton value={payboxNumber} />
-            </div>
-          ) : null}
           <p className="mt-2 text-xs text-muted-foreground">
             יש להעביר{" "}
-            <strong className="text-foreground">
-              {formatILS(order.total_amount)}
-            </strong>{" "}
+            <strong className="text-foreground">{formatILS(order.total_amount)}</strong>{" "}
             ולאחר מכן ללחוץ על כפתור הוואטסאפ לאישור.
           </p>
+        </div>
+      )}
+      {paymentMethod === "cash" && (
+        <div className="rounded-xl border-2 border-emerald-200 bg-emerald-50 p-4 shadow-sm">
+          <h2 className="mb-1 font-semibold text-emerald-800">תשלום במזומן</h2>
+          <p className="text-sm text-emerald-700">יש לשלם Upon pickup/arrival.</p>
+        </div>
+      )}
+      {paymentMethod === "paybox" && (
+        <div className="rounded-xl border-2 border-primary/30 bg-primary/5 p-4 shadow-sm">
+          <h2 className="mb-1 font-semibold text-primary">תשלום בפייבוקס</h2>
+          <p className="text-sm text-muted-foreground">בקרוב ניתן יהיה לשלם באמצעות PayBox.</p>
         </div>
       )}
 
@@ -147,9 +145,11 @@ export function OrderConfirmation({ order, bitNumber, payboxNumber }: Props) {
 
       <Button asChild variant="outline" size="lg" className="w-full">
         <Link href="/?reset=1" replace scroll={false}>
-          <Store className="h-4 w-4" />
-          חזרה לחנות
-          <ArrowRight className="h-4 w-4" />
+          <span className="flex items-center justify-center gap-2">
+            <Store className="h-4 w-4" />
+            חזרה לחנות
+            <ArrowRight className="h-4 w-4" />
+          </span>
         </Link>
       </Button>
     </div>

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -27,10 +27,11 @@ const STATUS_OPTIONS: Array<{
   value: Order["status"];
   label: string;
 }> = [
-  { value: "pending", label: "ממתינה" },
-  { value: "confirmed", label: "אושרה" },
-  { value: "completed", label: "הושלמה" },
-  { value: "cancelled", label: "בוטלה" },
+  { value: "pending_payment", label: "ממתין לאישור תשלום" },
+  { value: "approved", label: "מחכה לשליחה / איסוף" },
+  { value: "completed", label: "הושלם (נאסף / נשלח)" },
+  { value: "cancelled", label: "בוטל" },
+  { value: "archived", label: "בארכיון" },
 ];
 
 export default function AdminOrderDetailPage() {
@@ -87,6 +88,9 @@ export default function AdminOrderDetailPage() {
           customer_phone: order.customer_phone,
           delivery_address: order.delivery_address,
           notes: order.notes,
+          fulfillment_type: order.fulfillment_type,
+          payment_method: order.payment_method,
+          greeting_note: order.greeting_note,
         }),
       });
       if (!res.ok) throw new Error("שמירה נכשלה");
@@ -289,6 +293,53 @@ export default function AdminOrderDetailPage() {
                     setOrder({ ...order, notes: e.target.value || null })
                   }
                   rows={3}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="fulfillment_type">סוג אספקה</Label>
+                <select
+                  id="fulfillment_type"
+                  value={order.fulfillment_type ?? "pickup"}
+                  onChange={(e) =>
+                    setOrder({
+                      ...order,
+                      fulfillment_type: e.target.value as "delivery" | "pickup",
+                    })
+                  }
+                  className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option value="delivery">משלוח</option>
+                  <option value="pickup">איסוף עצמי</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="payment_method">אמצעי תשלום</Label>
+                <select
+                  id="payment_method"
+                  value={order.payment_method ?? ""}
+                  onChange={(e) =>
+                    setOrder({
+                      ...order,
+                      payment_method: e.target.value ? (e.target.value as "bit" | "paybox" | "cash") : undefined,
+                    })
+                  }
+                  className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option value="">--</option>
+                  <option value="bit">ביט</option>
+                  <option value="paybox">PayBox</option>
+                  <option value="cash">מזומן</option>
+                </select>
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <Label htmlFor="greeting_note">מכתב / ברכה לזר</Label>
+                <Textarea
+                  id="greeting_note"
+                  value={order.greeting_note ?? ""}
+                  onChange={(e) =>
+                    setOrder({ ...order, greeting_note: e.target.value || null })
+                  }
+                  rows={2}
                 />
               </div>
             </div>

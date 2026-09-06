@@ -11,6 +11,7 @@ export type Product = {
   description: string | null;
   price_standard: number;
   price_member: number;
+  cost_price: number;
   image_url: string | null;
   is_active: boolean;
   sort_order: number;
@@ -27,6 +28,9 @@ export type CartItem = {
 };
 
 export type DeliveryType = "pickup" | "delivery";
+
+export type FulfillmentType = "delivery" | "pickup";
+export type PaymentMethod = "bit" | "paybox" | "cash";
 
 export type CreateOrderInput = {
   customer_name: string;
@@ -51,9 +55,14 @@ export type Order = {
   delivery_fee: number;
   is_member: boolean;
   notes: string | null;
-  status: "pending" | "confirmed" | "completed" | "cancelled" | "archived";
+  status: "pending_payment" | "approved" | "completed" | "cancelled" | "archived";
   user_id: string | null;
   created_at: string;
+  fulfillment_type?: FulfillmentType;
+  payment_method?: PaymentMethod;
+  greeting_note?: string | null;
+  updated_at?: string;
+  inventory_deducted?: boolean;
 };
 
 export type SupplierAggregate = {
@@ -97,6 +106,8 @@ export type WeeklyKpi = {
   total_revenue: number;
   delivery_revenue: number;
   products_revenue: number;
+  total_cost: number;
+  gross_profit: number;
   orders_count: number;
   pickup_count: number;
   delivery_count: number;
@@ -104,6 +115,9 @@ export type WeeklyKpi = {
   new_customers_count: number;
   returning_customers_count: number;
   avg_order_value: number;
+  cancelled_orders_count: number;
+  cancelled_orders_value: number;
+  visitors_count: number;
 };
 
 export type TopProduct = {
@@ -111,6 +125,8 @@ export type TopProduct = {
   title: string;
   units: number;
   revenue: number;
+  cost: number;
+  profit: number;
 };
 
 export type WeeklyArchive = {
@@ -129,4 +145,12 @@ export type WeeklyArchive = {
   top_products: TopProduct[];
   product_sales: TopProduct[];
   created_at: string;
+};
+
+export type Inventory = {
+  id: string;
+  product_id: string;
+  live_stock_count: number;
+  reserved_orders: number;
+  updated_at: string;
 };

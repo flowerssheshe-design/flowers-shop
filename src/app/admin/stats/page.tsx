@@ -17,6 +17,9 @@ import {
   Users,
   Wallet,
   Percent,
+  CircleDollarSign,
+  TrendingDown,
+  Eye,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -152,6 +155,12 @@ export default function AdminStatsPage() {
                 )}
               />
               <KpiCard
+                icon={<Eye className="h-5 w-5" />}
+                title="ביקורים באתר"
+                value={String(data.kpi.visitors_count)}
+                subtitle="מבקרים ייחודיים השבוע"
+              />
+              <KpiCard
                 icon={<TrendingUp className="h-5 w-5" />}
                 title="ממוצע הזמנה (AOV)"
                 value={formatILS(data.kpi.avg_order_value)}
@@ -162,6 +171,28 @@ export default function AdminStatsPage() {
                 title="לקוחות"
                 value={`${data.kpi.new_customers_count} חדשים · ${data.kpi.returning_customers_count} חוזרים`}
                 subtitle="מתחילת השבוע"
+              />
+              <KpiCard
+                icon={<CircleDollarSign className="h-5 w-5" />}
+                title="עלות סחורות"
+                value={formatILS(data.kpi.total_cost)}
+                subtitle="עלות עלות לספקים"
+              />
+              <KpiCard
+                icon={<TrendingUp className="h-5 w-5" />}
+                title="רווח גולמי"
+                value={formatILS(data.kpi.gross_profit)}
+                subtitle={`מרווח ${data.kpi.orders_count > 0 ? Math.round((data.kpi.gross_profit / data.kpi.total_revenue) * 100) : 0}% מההכנסות`}
+                delta={percentChange(
+                  data.kpi.gross_profit,
+                  data.previousKpi.gross_profit,
+                )}
+              />
+              <KpiCard
+                icon={<TrendingDown className="h-5 w-5" />}
+                title="הפסדים (ביטולים)"
+                value={formatILS(data.kpi.cancelled_orders_value)}
+                subtitle={`${data.kpi.cancelled_orders_count} הזמנות שבוטלו`}
               />
             </section>
 
@@ -223,12 +254,14 @@ export default function AdminStatsPage() {
                 </p>
               ) : (
                 <Table
-                  headers={["#", "מוצר", "יחידות", "הכנסה"]}
+                  headers={["#", "מוצר", "יחידות", "הכנסה", "עלות", "רווח"]}
                   rows={data.topProducts.map((p, idx) => [
                     String(idx + 1),
                     p.title,
                     `${p.units} יח׳`,
                     formatILS(p.revenue),
+                    formatILS(p.cost),
+                    formatILS(p.profit),
                   ])}
                 />
               )}

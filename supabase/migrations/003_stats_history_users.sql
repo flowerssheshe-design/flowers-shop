@@ -68,8 +68,7 @@ language sql stable as $$
     from public.orders o,
          jsonb_array_elements(o.items) as item
     where o.created_at >= public.week_start_sunday()
-      and o.status <> 'cancelled'
-      and o.status <> 'archived'
+      and o.status = 'approved'
   )
   select
     p.id as product_id,
@@ -78,7 +77,6 @@ language sql stable as $$
   from public.products p
   left join exploded e on e.product_id = p.id
   group by p.id, p.title
-  having coalesce(sum(e.qty), 0) > 0
   order by total_qty desc;
 $$;
 

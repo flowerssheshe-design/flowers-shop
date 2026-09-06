@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -26,15 +26,16 @@ const STATUS_OPTIONS: Array<{
   value: Order["status"];
   label: string;
 }> = [
-  { value: "pending", label: "ממתינה" },
-  { value: "confirmed", label: "אושרה" },
-  { value: "completed", label: "הושלמה" },
-  { value: "cancelled", label: "בוטלה" },
+  { value: "pending_payment", label: "ממתין לאישור תשלום" },
+  { value: "approved", label: "מחכה לשליחה / איסוף" },
+  { value: "completed", label: "הושלם (נאסף / נשלח)" },
+  { value: "cancelled", label: "בוטל" },
+  { value: "archived", label: "בארכיון" },
 ];
 
 const STATUS_COLOR: Record<Order["status"], string> = {
-  pending: "bg-amber-100 text-amber-800 border-amber-200",
-  confirmed: "bg-blue-100 text-blue-800 border-blue-200",
+  pending_payment: "bg-amber-100 text-amber-800 border-amber-200",
+  approved: "bg-blue-100 text-blue-800 border-blue-200",
   completed: "bg-emerald-100 text-emerald-800 border-emerald-200",
   cancelled: "bg-rose-100 text-rose-800 border-rose-200",
   archived: "bg-slate-100 text-slate-700 border-slate-200",
@@ -217,18 +218,44 @@ export default function AdminOrdersPage() {
                 className="pl-8 text-sm"
               />
             </div>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="rounded-md border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-            >
-              <option value="all">כל הסטטוסים</option>
-              {STATUS_OPTIONS.map((s) => (
-                <option key={s.value} value={s.value}>
-                  {s.label}
-                </option>
-              ))}
-            </select>
+            ﻿            <div className="flex gap-2 overflow-x-auto pb-1">
+              <button
+                onClick={() => setStatusFilter("all")}
+                className={`whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium border ${statusFilter === "all"
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-card border-primary/15 hover:bg-accent"
+                }`}
+              >
+                הכל
+              </button>
+              <button
+                onClick={() => setStatusFilter("pending_payment")}
+                className={`whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium border ${statusFilter === "pending_payment"
+                  ? "bg-amber-100 text-amber-800 border-amber-200"
+                  : "bg-card border-primary/15 hover:bg-accent"
+                }`}
+              >
+                ממתין לאישור תשלום
+              </button>
+              <button
+                onClick={() => setStatusFilter("approved")}
+                className={`whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium border ${statusFilter === "approved"
+                  ? "bg-blue-100 text-blue-800 border-blue-200"
+                  : "bg-card border-primary/15 hover:bg-accent"
+                }`}
+              >
+                מחכה לשליחה / איסוף
+              </button>
+              <button
+                onClick={() => setStatusFilter("completed")}
+                className={`whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium border ${statusFilter === "completed"
+                  ? "bg-emerald-100 text-emerald-800 border-emerald-200"
+                  : "bg-card border-primary/15 hover:bg-accent"
+                }`}
+              >
+                הושלם
+              </button>
+            </div>
             <Button
               size="sm"
               variant="outline"
@@ -256,17 +283,18 @@ export default function AdminOrdersPage() {
         ) : (
           <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
             <table className="w-full text-sm">
-              <thead className="bg-muted/50 text-start text-xs uppercase text-muted-foreground">
-                <tr>
-                  <th className="p-3 text-start">תאריך</th>
-                  <th className="p-3 text-start">לקוח</th>
-                  <th className="p-3 text-start">פריטים</th>
-                  <th className="p-3 text-start">סוג משלוח</th>
-                  <th className="p-3 text-start">סה״כ</th>
-                  <th className="p-3 text-start">סטטוס</th>
-                  <th className="p-3 text-start">פעולות</th>
-                </tr>
-              </thead>
+               <thead className="bg-muted/50 text-start text-xs uppercase text-muted-foreground">
+                 <tr>
+                   <th className="p-3 text-start">תאריך</th>
+                   <th className="p-3 text-start">לקוח</th>
+                   <th className="p-3 text-start">סוג לקוח</th>
+                   <th className="p-3 text-start">פריטים</th>
+                   <th className="p-3 text-start">סוג משלוח</th>
+                   <th className="p-3 text-start">סה״כ</th>
+                   <th className="p-3 text-start">סטטוס</th>
+                   <th className="p-3 text-start">פעולות</th>
+                 </tr>
+               </thead>
               <tbody>
                 {filtered.map((o) => {
                   const items = Array.isArray(o.items) ? o.items : [];
@@ -279,86 +307,92 @@ export default function AdminOrdersPage() {
                       <td className="p-3 whitespace-nowrap tabular-nums">
                         {new Date(o.created_at).toLocaleString("he-IL")}
                       </td>
-                      <td className="p-3">
-                        <div className="font-medium">{o.customer_name}</div>
-                        <div
-                          className="text-xs text-muted-foreground"
-                          dir="ltr"
-                        >
-                          {o.customer_phone}
-                        </div>
-                        {o.delivery_address ? (
-                          <div className="text-xs text-muted-foreground">
-                            {o.delivery_address}
-                          </div>
-                        ) : null}
-                      </td>
-                      <td className="p-3">
-                        <ul className="space-y-0.5 text-xs">
-                          {items.slice(0, 3).map((it, idx) => (
-                            <li key={idx}>
-                              {it.title} ×{it.qty}
-                            </li>
-                          ))}
-                          {items.length > 3 && (
-                            <li className="text-muted-foreground">
-                              +{items.length - 3} נוספים
-                            </li>
-                          )}
-                        </ul>
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          {itemCount} יח׳
-                        </div>
-                      </td>
-                      <td className="p-3">
-                        {o.delivery_type === "delivery"
-                          ? "משלוח"
-                          : "איסוף עצמי"}
-                      </td>
-                      <td className="p-3 font-semibold tabular-nums">
-                        {formatILS(o.total_amount)}
-                      </td>
-                      <td className="p-3">
-                        <select
-                          value={o.status}
-                          disabled={updating === o.id}
-                          onChange={(e) =>
-                            updateStatus(o, e.target.value as Order["status"])
-                          }
-                          className={`w-36 cursor-pointer rounded-md border px-2 py-1 text-xs font-medium ${STATUS_COLOR[o.status]}`}
-                        >
-                          {STATUS_OPTIONS.map((s) => (
-                            <option key={s.value} value={s.value}>
-                              {s.label}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="p-3">
-                        <div className="flex items-center gap-1">
-                          <Button
-                            asChild
-                            variant="ghost"
-                            size="sm"
-                            aria-label={`הצג הזמנה ${o.id}`}
-                            title="הצג הזמנה"
-                          >
-                            <Link href={`/admin/orders/${o.id}`}>
-                              <Package className="h-3.5 w-3.5" />
-                            </Link>
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            aria-label={`מחק הזמנה ${o.id}`}
-                            title="מחק הזמנה"
-                            onClick={() => deleteOrder(o)}
-                            disabled={updating === o.id}
-                          >
-                            <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                          </Button>
-                        </div>
-                      </td>
+                       <td className="p-3">
+                         <div className="font-medium">{o.customer_name}</div>
+                         <div className="text-xs text-muted-foreground">{o.customer_phone}</div>
+                       </td>
+                       <td className="p-3">
+                         {o.user_id ? (
+                           o.is_member ? (
+                             <span className="inline-flex items-center gap-1 rounded-full border border-gold/40 bg-gold/10 px-2 py-1 text-xs font-medium text-gold-foreground">
+                               לקוח קבוע
+                             </span>
+                           ) : (
+                             <span className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/5 px-2 py-1 text-xs font-medium">
+                               לקוח מחובר
+                             </span>
+                           )
+                         ) : (
+                           <span className="inline-flex items-center gap-1 rounded-full border border-primary/10 bg-muted/40 px-2 py-1 text-xs font-medium text-muted-foreground">
+                             לקוח בלי חשבון
+                           </span>
+                         )}
+                       </td>
+                       <td className="p-3">
+                         <ul className="space-y-0.5 text-xs">
+                           {items.slice(0, 3).map((it, idx) => (
+                             <li key={idx}>
+                               {it.title} ×{it.qty}
+                             </li>
+                           ))}
+                           {items.length > 3 && (
+                             <li className="text-muted-foreground">
+                               +{items.length - 3} נוספים
+                             </li>
+                           )}
+                         </ul>
+                         <div className="mt-1 text-xs text-muted-foreground">
+                           {itemCount} יח׳
+                         </div>
+                       </td>
+                       <td className="p-3">
+                         {o.delivery_type === "delivery"
+                           ? "משלוח"
+                           : "איסוף עצמי"}
+                       </td>
+                       <td className="p-3 font-semibold tabular-nums">
+                         {formatILS(o.total_amount)}
+                       </td>
+                       <td className="p-3">
+                         <span className={`inline-block rounded-md border px-2 py-1 text-xs font-medium ${STATUS_COLOR[o.status]}`}>
+                           {STATUS_OPTIONS.find((s) => s.value === o.status)?.label ?? o.status}
+                         </span>
+                       </td>
+                       <td className="p-3">
+                         <div className="flex items-center gap-1">
+                           {o.status === "pending_payment" && (
+                             <Button
+                               size="sm"
+                               onClick={() => updateStatus(o, "approved")}
+                               disabled={updating === o.id}
+                               className="rounded-full"
+                             >
+                               אשר תשלום
+                             </Button>
+                           )}
+                           <Button
+                             asChild
+                             variant="ghost"
+                             size="sm"
+                             aria-label={`הצג הזמנה ${o.id}`}
+                             title="הצג הזמנה"
+                           >
+                             <Link href={`/admin/orders/${o.id}`}>
+                               <Package className="h-3.5 w-3.5" />
+                             </Link>
+                           </Button>
+                           <Button
+                             variant="ghost"
+                             size="sm"
+                             aria-label={`מחק הזמנה ${o.id}`}
+                             title="מחק הזמנה"
+                             onClick={() => deleteOrder(o)}
+                             disabled={updating === o.id}
+                           >
+                             <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                           </Button>
+                         </div>
+                       </td>
                     </tr>
                   );
                 })}
