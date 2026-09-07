@@ -125,7 +125,7 @@ export function SiteHeader({ cartCount, onCartClick, user, hasSubmittedOrder }: 
           <Button
             type="button"
             variant="ghost"
-            size="sm"
+            size="default"
             aria-label="פתח עגלה"
             onClick={onCartClick}
             className={cn(
@@ -145,7 +145,7 @@ export function SiteHeader({ cartCount, onCartClick, user, hasSubmittedOrder }: 
           <Button
             type="button"
             variant="ghost"
-            size="sm"
+            size="default"
             aria-label="תפריט"
             onClick={() => setMobileMenuOpen(true)}
           >

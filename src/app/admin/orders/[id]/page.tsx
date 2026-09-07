@@ -145,7 +145,7 @@ export default function AdminOrderDetailPage() {
   return (
     <main className="min-h-screen bg-muted/30 pb-12">
       <header className="sticky top-0 z-10 border-b bg-background/90 backdrop-blur">
-        <div className="container flex items-center justify-between gap-2 py-3">
+        <div className="container flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
           <AdminNav />
           <div className="flex items-center gap-2">
             <Button asChild size="sm" variant="outline">
@@ -368,7 +368,7 @@ export default function AdminOrderDetailPage() {
                       key={idx}
                       className="flex items-center justify-between rounded-md border p-2 text-sm"
                     >
-                      <span>{it.title} ×{it.qty}</span>
+                      <span className="truncate min-w-0">{it.title} ×{it.qty}</span>
                       <span className="tabular-nums">
                         {formatILS(it.price * it.qty)}
                       </span>

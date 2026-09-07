@@ -421,7 +421,7 @@ export default function AdminInventoryPage() {
   return (
     <main className="min-h-screen bg-gradient-to-b from-background to-muted/30">
       <header className="sticky top-0 z-20 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-        <div className="container flex items-center justify-between gap-2 py-3">
+        <div className="container flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
           <AdminNav />
           <div className="flex items-center gap-2">
             <Button
@@ -555,7 +555,7 @@ export default function AdminInventoryPage() {
               </div>
             </section>
 
-            <div className="flex items-center gap-2 p-1 bg-muted rounded-lg w-fit">
+            <div className="flex items-center gap-2 overflow-x-auto p-1 bg-muted rounded-lg w-full sm:w-fit">
               <button
                 onClick={() => setActiveTab('preOrders')}
                 className={`inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-all ${
@@ -683,7 +683,7 @@ export default function AdminInventoryPage() {
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
+                    <table className="w-full min-w-[700px] text-sm">
                       <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
                         <tr>
                           <th className="p-4 text-right font-semibold">מוצר</th>
@@ -775,7 +775,7 @@ export default function AdminInventoryPage() {
                             key={s.product_id}
                             className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2 text-sm"
                           >
-                            <span className="font-medium">{s.title}</span>
+                            <span className="font-medium truncate min-w-0">{s.title}</span>
                             <div className="flex items-center gap-1 text-xs">
                               <span className="text-muted-foreground">
                                 {s.total_qty} הוזמנו   
@@ -877,8 +877,8 @@ export default function AdminInventoryPage() {
                       אין שבועות בארכיון עדיין. השתמשו בכפתור ״העבר לארכיון ואפס שבוע״ כדי לשמור את נתוני השבוע.
                     </p>
                   ) : !selectedArchive ? (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[1000px] text-sm">
                         <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
                            <tr>
                              <th className="p-3 text-right font-semibold">שבוע</th>

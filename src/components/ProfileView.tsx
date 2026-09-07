@@ -361,7 +361,7 @@ export function ProfileView({
             </p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full min-w-[500px] text-sm">
                 <thead className="text-start text-xs uppercase text-muted-foreground">
                   <tr>
                     <th className="px-2 py-2 text-start">תאריך</th>

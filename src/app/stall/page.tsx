@@ -174,7 +174,7 @@ export default function StallPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 p-1 bg-muted rounded-lg w-fit">
+          <div className="flex items-center gap-2 overflow-x-auto p-1 bg-muted rounded-lg w-full sm:w-fit">
             <button
               onClick={() => setActiveTab('selfPickup')}
               className={`inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-all ${

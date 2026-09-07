@@ -786,9 +786,7 @@ function CheckoutDialog(props: CheckoutDialogProps) {
                 key={it.productId}
                 className="flex items-center justify-between py-1.5 text-sm"
               >
-                <span>
-                  {it.title} <span className="text-muted-foreground">×{it.qty}</span>
-                </span>
+                <span className="truncate min-w-0">{it.title} <span className="text-muted-foreground">×{it.qty}</span></span>
                 <span className="tabular-nums">
                   {formatILS(it.price * it.qty)}
                 </span>

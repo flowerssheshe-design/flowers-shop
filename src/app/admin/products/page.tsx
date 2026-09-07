@@ -125,7 +125,7 @@ export default function AdminProductsPage() {
   return (
     <main className="min-h-screen bg-muted/30 pb-12">
       <header className="sticky top-0 z-10 border-b bg-background/90 backdrop-blur">
-        <div className="container flex items-center justify-between gap-2 py-3">
+        <div className="container flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
           <AdminNav />
           <div className="flex items-center gap-2">
             <Button
@@ -170,8 +170,8 @@ export default function AdminProductsPage() {
             <Loader2 className="h-6 w-6 animate-spin" />
           </div>
         ) : (
-          <section className="overflow-hidden rounded-xl border bg-card shadow-sm">
-            <table className="w-full text-sm">
+          <section className="overflow-x-auto rounded-xl border bg-card shadow-sm">
+            <table className="w-full min-w-[900px] text-sm">
                <thead className="bg-muted/50 text-start text-xs uppercase text-muted-foreground">
                   <tr>
                     <th className="p-3 text-start">שם</th>

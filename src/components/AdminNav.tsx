@@ -18,7 +18,7 @@ export function AdminNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="flex items-center gap-1">
+    <nav className="-mx-1 overflow-x-auto whitespace-nowrap px-1">
       {items.map((item) => {
         const active = pathname === item.href;
         return (
@@ -26,7 +26,7 @@ export function AdminNav() {
             key={item.href}
             href={item.href}
             className={cn(
-              "rounded-md px-3 py-1.5 text-sm font-medium transition",
+              "inline-flex rounded-md px-3 py-1.5 text-sm font-medium transition",
               active
                 ? "bg-primary text-primary-foreground shadow"
                 : "text-foreground/70 hover:bg-accent hover:text-primary",
