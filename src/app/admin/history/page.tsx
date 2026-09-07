@@ -7,6 +7,7 @@ import {
   ExternalLink,
   Loader2,
   LogOut,
+  RefreshCw,
   Store as StoreIcon,
   Truck,
   Sparkles,
@@ -114,14 +115,26 @@ export default function AdminHistoryPage() {
           </div>
         )}
 
-        <div className="flex flex-col gap-1">
-          <h1 className="flex items-center gap-2 text-2xl font-bold">
-            <ArchiveIcon className="h-6 w-6 text-primary" />
-            היסטוריית שבועות
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            בחרו שבוע ארכיון לצפייה בנתונים המלאים.
-          </p>
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex flex-col gap-1">
+            <h1 className="flex items-center gap-2 text-2xl font-bold">
+              <ArchiveIcon className="h-6 w-6 text-primary" />
+              היסטוריית שבועות
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              בחרו שבוע ארכיון לצפייה בנתונים המלאים.
+            </p>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void load(selected)}
+            disabled={loading}
+            className="border-primary/20 hover:border-primary/40 hover:bg-primary/5"
+          >
+            <RefreshCw className={`h-4 w-4 ml-1.5 ${loading ? "animate-spin" : ""}`} />
+            רענון
+          </Button>
         </div>
 
         <div className="flex items-center gap-2">

@@ -18,9 +18,10 @@ type Props = {
   cartCount: number;
   onCartClick: () => void;
   user: SessionUser | null;
+  hasSubmittedOrder?: boolean;
 };
 
-export function SiteHeader({ cartCount, onCartClick, user }: Props) {
+export function SiteHeader({ cartCount, onCartClick, user, hasSubmittedOrder }: Props) {
   const router = useRouter();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -34,8 +35,10 @@ export function SiteHeader({ cartCount, onCartClick, user }: Props) {
     router.refresh();
   }
 
+  const storeHref = hasSubmittedOrder ? "/?reset=1" : "/#store";
+
   const navLinks = [
-    { href: "/#store", label: "חנות" },
+    { href: storeHref, label: "חנות" },
     { href: "/#about", label: "אודות" },
     { href: user ? "/profile" : "/login", label: "פרטי החשבון" },
   ];
@@ -50,7 +53,7 @@ export function SiteHeader({ cartCount, onCartClick, user }: Props) {
   }
 
   return (
-    <header className="sticky top-0 z-40 border-b border-primary/10 bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/70">
+    <header className="sticky top-0 z-[60] border-b border-primary/10 bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/70">
       <div className="container flex items-center justify-between overflow-x-hidden py-3 sm:py-4">
         {/* Logo / Brand */}
         <Link

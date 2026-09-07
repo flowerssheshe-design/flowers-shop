@@ -5,9 +5,11 @@ import Link from "next/link";
 import {
   Download,
   ExternalLink,
+  History,
   Loader2,
   LogOut,
   Package,
+  RefreshCw,
   Search,
   Trash2,
 } from "lucide-react";
@@ -49,6 +51,7 @@ export default function AdminOrdersPage() {
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
+  const [includeArchived, setIncludeArchived] = useState(false);
   const [updating, setUpdating] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
   const { toast } = useToast();
@@ -59,8 +62,8 @@ export default function AdminOrdersPage() {
       return;
     }
     setReady(true);
-    void load();
-  }, []);
+    void load(includeArchived);
+  }, [includeArchived]);
 
   useEffect(() => {
     let items = orders;
@@ -78,11 +81,14 @@ export default function AdminOrdersPage() {
     setFiltered(items);
   }, [orders, statusFilter, search]);
 
-  async function load() {
+  async function load(withArchived: boolean) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/admin/orders", { cache: "no-store" });
+      const url = withArchived
+        ? "/api/admin/orders?includeArchived=1"
+        : "/api/admin/orders";
+      const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) throw new Error("טעינת הזמנות נכשלה");
       const data = (await res.json()) as { orders: Order[] };
       setOrders(data.orders ?? []);
@@ -255,7 +261,37 @@ export default function AdminOrdersPage() {
               >
                 הושלם
               </button>
+              {includeArchived && (
+                <button
+                  onClick={() => setStatusFilter("archived")}
+                  className={`whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium border ${statusFilter === "archived"
+                    ? "bg-slate-100 text-slate-700 border-slate-200"
+                    : "bg-card border-primary/15 hover:bg-accent"
+                  }`}
+                >
+                  ארכיון
+                </button>
+              )}
             </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => load(includeArchived)}
+              disabled={loading}
+              className="border-primary/20 hover:border-primary/40 hover:bg-primary/5"
+            >
+              <RefreshCw className={`h-4 w-4 ml-1.5 ${loading ? "animate-spin" : ""}`} />
+              רענון
+            </Button>
+            <Button
+              size="sm"
+              variant={includeArchived ? "default" : "outline"}
+              onClick={() => setIncludeArchived((v) => !v)}
+              title={includeArchived ? "הסתר הזמנות מארכיון" : "הצג גם הזמנות מארכיון"}
+            >
+              <History className="h-4 w-4" />
+              {includeArchived ? "כולל ארכיון" : "כולל ארכיון"}
+            </Button>
             <Button
               size="sm"
               variant="outline"
@@ -381,16 +417,16 @@ export default function AdminOrdersPage() {
                                <Package className="h-3.5 w-3.5" />
                              </Link>
                            </Button>
-                           <Button
-                             variant="ghost"
-                             size="sm"
-                             aria-label={`מחק הזמנה ${o.id}`}
-                             title="מחק הזמנה"
-                             onClick={() => deleteOrder(o)}
-                             disabled={updating === o.id}
-                           >
-                             <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                           </Button>
+<Button
+                              variant="ghost"
+                              size="sm"
+                              aria-label={`מחק הזמנה ${o.id}`}
+                              title="מחק הזמנה"
+                              onClick={() => deleteOrder(o)}
+                              disabled={updating === o.id}
+                            >
+                              <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                            </Button>
                          </div>
                        </td>
                     </tr>

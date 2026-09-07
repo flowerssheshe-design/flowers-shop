@@ -85,8 +85,9 @@ export async function PATCH(req: Request) {
   }
   const product_id = String(body.product_id ?? "");
   const live_stock_count = typeof body.live_stock_count === "number" ? body.live_stock_count : undefined;
+  const initial_stock_count = typeof body.initial_stock_count === "number" ? body.initial_stock_count : undefined;
   const delta = typeof body.delta === "number" ? body.delta : undefined;
-  if (!product_id || (live_stock_count === undefined && delta === undefined)) {
+  if (!product_id || (live_stock_count === undefined && delta === undefined && initial_stock_count === undefined)) {
     return NextResponse.json({ error: "יש לציין כמות או דלתא" }, { status: 400 });
   }
   try {
@@ -106,9 +107,24 @@ export async function PATCH(req: Request) {
         { status: 400 },
       );
     }
+
+    const upsertPayload: Record<string, any> = { product_id, live_stock_count: current };
+    if (initial_stock_count !== undefined) {
+      upsertPayload.initial_stock_count = initial_stock_count;
+    } else {
+      const { data: existing } = await admin
+        .from("inventory")
+        .select("initial_stock_count")
+        .eq("product_id", product_id)
+        .single();
+      if (existing?.initial_stock_count == null) {
+        upsertPayload.initial_stock_count = current;
+      }
+    }
+
     const { data, error } = await admin
       .from("inventory")
-      .upsert({ product_id, live_stock_count: current }, { onConflict: 'product_id' })
+      .upsert(upsertPayload, { onConflict: 'product_id' })
       .select("*")
       .single();
     if (error || !data) {

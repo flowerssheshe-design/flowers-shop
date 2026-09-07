@@ -217,7 +217,7 @@ export function Storefront({
   if (submittedOrder) {
     return (
       <main className="min-h-screen bg-background">
-        <SiteHeader cartCount={0} onCartClick={() => undefined} user={user} />
+        <SiteHeader cartCount={0} onCartClick={() => undefined} user={user} hasSubmittedOrder />
         <OrderConfirmation
           paymentMethod={submittedOrder.payment_method}
           order={submittedOrder}
@@ -234,6 +234,7 @@ export function Storefront({
         cartCount={cartCount}
         onCartClick={() => setCartOpen(true)}
         user={user}
+        hasSubmittedOrder={!!submittedOrder}
       />
 
       {/* Hero */}
@@ -442,10 +443,8 @@ export function Storefront({
           }}
           paymentMethod={paymentMethod}
           setPaymentMethod={setPaymentMethod}
-          greetingNote={greetingNote}
-          setGreetingNote={setGreetingNote}
-        />
-      </Dialog>
+         />
+       </Dialog>
     </main>
   );
 }
@@ -585,8 +584,6 @@ type CheckoutDialogProps = {
   onBackToCart: () => void;
   paymentMethod: string;
   setPaymentMethod: (v: "bit" | "paybox" | "cash" | "") => void;
-  greetingNote: string;
-  setGreetingNote: (v: string) => void;
 };
 
 function CheckoutDialog(props: CheckoutDialogProps) {
@@ -611,8 +608,6 @@ function CheckoutDialog(props: CheckoutDialogProps) {
     onBackToCart,
     paymentMethod,
     setPaymentMethod,
-    greetingNote,
-    setGreetingNote,
   } = props;
 
   const deliveryFee = deliveryType === "delivery" ? DELIVERY_FEE : 0;
@@ -723,19 +718,20 @@ function CheckoutDialog(props: CheckoutDialogProps) {
   ﻿        </div>
         </div>
 
-        {/* Greeting note */}
+        {/* Greeting note (coming soon) */}
         <div className='mt-4 space-y-1.5'>
-          <Label htmlFor='co-greeting'>
+          <Label htmlFor='co-greeting' className='text-sm font-medium'>
             <MessageSquare className='me-1 inline h-3.5 w-3.5' />
             הוסף מכתב / ברכה לזר
           </Label>
-          <Textarea
-            id='co-greeting'
-            value={greetingNote}
-            onChange={(e) => setGreetingNote(e.target.value)}
-            placeholder='כרטיס ברכה, העדפות צבעים…'
-            rows={2}
-          />
+          <button
+            type='button'
+            disabled
+            className='flex items-center justify-between rounded-xl border border-primary/15 bg-muted p-3 text-sm text-muted-foreground opacity-70'
+          >
+            <span>כרטיס ברכה, מכתב לזר</span>
+            <span className='text-xs'>בקרוב</span>
+          </button>
         </div>
 
         {/* Payment method */}

@@ -7,6 +7,7 @@ import {
   ExternalLink,
   Loader2,
   LogOut,
+  RefreshCw,
   Search,
   Send,
   Smartphone,
@@ -194,7 +195,19 @@ export default function AdminMessagesPage() {
           </div>
         )}
 
-        <h1 className="text-xl font-bold">הודעות וואצפ</h1>
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <h1 className="text-xl font-bold">הודעות וואצפ</h1>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => load()}
+            disabled={loading}
+            className="border-primary/20 hover:border-primary/40 hover:bg-primary/5"
+          >
+            <RefreshCw className={`h-4 w-4 ml-1.5 ${loading ? "animate-spin" : ""}`} />
+            רענון
+          </Button>
+        </div>
 
         {!WHATSAPP_CONFIGURED_PUBLIC && (
           <div

@@ -1,5 +1,6 @@
--- Run in Supabase SQL editor (one-time setup).
--- Schedule the weekly archive + reset to run every Sunday at 00:00 UTC.
+-- DISABLED: automatic weekly reset is now manual-only via the Admin Inventory page.
+-- The weekly_reset() SQL function is still available for manual execution.
+-- To re-enable automation, uncomment the desired scheduling option below.
 
 create extension if not exists pg_cron;
 create extension if not exists pg_net;

@@ -7,6 +7,7 @@ import {
   ExternalLink,
   Loader2,
   LogOut,
+  RefreshCw,
   Save,
   Trash2,
 } from "lucide-react";
@@ -174,11 +175,21 @@ export default function AdminOrderDetailPage() {
           </div>
         ) : (
           <>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-3">
               <h1 className="text-xl font-bold">
                 הזמנה #{order.id.slice(0, 8)}
               </h1>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void load()}
+                  disabled={loading}
+                  className="border-primary/20 hover:border-primary/40 hover:bg-primary/5"
+                >
+                  <RefreshCw className={`h-4 w-4 ml-1.5 ${loading ? "animate-spin" : ""}`} />
+                  רענון
+                </Button>
                 <Button
                   size="sm"
                   variant="destructive"

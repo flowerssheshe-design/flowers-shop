@@ -7,6 +7,7 @@ import {
   Loader2,
   LogOut,
   Pencil,
+  RefreshCw,
   Save,
   Search,
   Sparkles,
@@ -165,14 +166,26 @@ export default function AdminUsersPage() {
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h1 className="text-xl font-bold">משתמשים</h1>
-          <div className="relative w-full sm:w-64">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="חיפוש לפי שם/אימייל/טלפון..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-8 text-sm"
-            />
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative w-full sm:w-64">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="חיפוש לפי שם/אימייל/טלפון..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-8 text-sm"
+              />
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => load()}
+              disabled={loading}
+              className="border-primary/20 hover:border-primary/40 hover:bg-primary/5"
+            >
+              <RefreshCw className={`h-4 w-4 ml-1.5 ${loading ? "animate-spin" : ""}`} />
+              רענון
+            </Button>
           </div>
         </div>
 

@@ -8,6 +8,7 @@ import {
   ExternalLink,
   Loader2,
   LogOut,
+  RefreshCw,
   Truck,
   Store as StoreIcon,
   Sparkles,
@@ -117,13 +118,25 @@ export default function AdminStatsPage() {
           </div>
         )}
 
-        <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-bold">סטטיסטיקות וביצועים</h1>
-          {data && (
-            <p className="text-sm text-muted-foreground">
-              שבוע נוכחי ({formatDateRange(data.weekStart, data.weekEnd)})
-            </p>
-          )}
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex flex-col gap-1">
+            <h1 className="text-2xl font-bold">סטטיסטיקות וביצועים</h1>
+            {data && (
+              <p className="text-sm text-muted-foreground">
+                שבוע נוכחי ({formatDateRange(data.weekStart, data.weekEnd)})
+              </p>
+            )}
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => load()}
+            disabled={loading}
+            className="border-primary/20 hover:border-primary/40 hover:bg-primary/5"
+          >
+            <RefreshCw className={`h-4 w-4 ml-1.5 ${loading ? "animate-spin" : ""}`} />
+            רענון
+          </Button>
         </div>
 
         {loading || !data ? (

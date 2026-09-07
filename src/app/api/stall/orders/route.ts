@@ -1,34 +1,35 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SUPABASE_CONFIGURED } from "@/lib/constants";
-import { requireAdmin } from "@/lib/admin-auth";
 import type { Order } from "@/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export async function GET(req: Request) {
-  const denied = requireAdmin();
-  if (denied) return denied;
+export async function GET() {
+  try {
+    const store = cookies();
+    if (store.get("flowers_stall_auth")?.value !== "1") {
+      return NextResponse.json({ error: "נדרש זיהוי דוכן" }, { status: 401 });
+    }
+  } catch {
+    return NextResponse.json({ error: "נדרש זיהוי דוכן" }, { status: 401 });
+  }
+
   if (!SUPABASE_CONFIGURED) {
     return NextResponse.json({ orders: [] });
   }
   try {
     const admin = createAdminClient();
-    const url = new URL(req.url);
-    const includeArchived = url.searchParams.get("includeArchived") === "1";
-
-    let query = admin
+    const { data, error } = await admin
       .from("orders")
       .select("*")
+      .neq("status", "archived")
+      .eq("status", "approved")
+      .eq("delivery_type", "pickup")
       .order("created_at", { ascending: false });
-
-    if (!includeArchived) {
-      query = query.neq("status", "archived");
-    }
-
-    const { data, error } = await query.limit(1000);
     if (error) {
       return NextResponse.json(
         { error: "טעינת הזמנות נכשלה" },

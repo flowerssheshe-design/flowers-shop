@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Phone, MapPin, Package, LogOut } from "lucide-react";
+import { Phone, MapPin, Package, LogOut, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { buildWhatsAppLink, normalizeWhatsAppRecipient } from "@/lib/utils";
 import type { Order } from "@/types";
@@ -14,21 +14,22 @@ export default function CourierPage() {
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function load() {
-      setLoading(true);
-      try {
-        const res = await fetch("/api/courier/orders");
-        if (res.ok) {
-          const data = await res.json();
-          setOrders(data.orders ?? []);
-        }
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setLoading(false);
+  async function load() {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/courier/orders");
+      if (res.ok) {
+        const data = await res.json();
+        setOrders(data.orders ?? []);
       }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
     }
+  }
+
+  useEffect(() => {
     void load();
   }, []);
 
@@ -63,15 +64,27 @@ export default function CourierPage() {
         <div className="mx-auto max-w-2xl space-y-4">
           <div className="flex items-center justify-between">
             <h1 className="text-2xl font-bold">הזמנות למשלוח</h1>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleLogout}
-              className="gap-2"
-            >
-              <LogOut className="h-4 w-4" />
-              יציאה
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void load()}
+                disabled={loading}
+                className="border-primary/20 hover:border-primary/40 hover:bg-primary/5"
+              >
+                <RefreshCw className={`h-4 w-4 ml-1.5 ${loading ? "animate-spin" : ""}`} />
+                רענון
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleLogout}
+                className="gap-2"
+              >
+                <LogOut className="h-4 w-4" />
+                יציאה
+              </Button>
+            </div>
           </div>
 
           {loading ? (
