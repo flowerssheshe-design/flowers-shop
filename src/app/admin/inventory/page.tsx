@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useCallback, useState } from "react";
 import { LogOut, Loader2, MessageSquare, Copy, Download, Truck, Package, ClipboardList, TrendingUp, RefreshCw, Archive, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -267,11 +267,28 @@ export default function AdminInventoryPage() {
     return () => window.removeEventListener('storage', handler);
   }, []);
 
+  const loadArchives = useCallback(async () => {
+    setArchivesLoading(true);
+    try {
+      const res = await fetch("/api/admin/history", { cache: "no-store" });
+      if (!res.ok) throw new Error("טעינת ארכיון נכשלה");
+      const data = (await res.json()) as { archives: WeeklyArchive[] };
+      setArchives(data.archives ?? ([] as WeeklyArchive[]));
+      if (!selectedArchive && (data.archives ?? []).length > 0) {
+        setSelectedArchive(data.archives[0]);
+      }
+    } catch (e) {
+      toast({ title: e instanceof Error ? e.message : "שגיאה", variant: "error" });
+    } finally {
+      setArchivesLoading(false);
+    }
+  }, [setArchivesLoading, setArchives, setSelectedArchive, toast]);
+
   useEffect(() => {
     if (activeTab === 'archives') {
       void loadArchives();
     }
-  }, [activeTab]);
+  }, [activeTab, loadArchives]);
 
   async function confirmSupplierOrder() {
     if (!products.length) return;
@@ -348,23 +365,6 @@ export default function AdminInventoryPage() {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     toast({ title: "הקובץ הורד בהצלחה", variant: "success" });
-  }
-
-  async function loadArchives() {
-    setArchivesLoading(true);
-    try {
-      const res = await fetch("/api/admin/history", { cache: "no-store" });
-      if (!res.ok) throw new Error("טעינת ארכיון נכשלה");
-      const data = (await res.json()) as { archives: WeeklyArchive[] };
-      setArchives(data.archives ?? ([] as WeeklyArchive[]));
-      if (!selectedArchive && (data.archives ?? []).length > 0) {
-        setSelectedArchive(data.archives[0]);
-      }
-    } catch (e) {
-      toast({ title: e instanceof Error ? e.message : "שגיאה", variant: "error" });
-    } finally {
-      setArchivesLoading(false);
-    }
   }
 
   async function deleteArchive(id: string) {
@@ -874,7 +874,7 @@ export default function AdminInventoryPage() {
                     </div>
                   ) : archives.length === 0 ? (
                     <p className="text-center text-sm text-muted-foreground py-10">
-                      אין שבועות בארכיון עדיין. השתמשו בכפתור "העבר לארכיון ואפס שבוע" כדי לשמור את נתוני השבוע.
+                      אין שבועות בארכיון עדיין. השתמשו בכפתור ״העבר לארכיון ואפס שבוע״ כדי לשמור את נתוני השבוע.
                     </p>
                   ) : !selectedArchive ? (
                     <div className="overflow-x-auto">
