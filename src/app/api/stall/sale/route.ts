@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SUPABASE_CONFIGURED } from "@/lib/constants";
 import { requireAdmin } from "@/lib/admin-auth";
+import { getStoreMode, isRealtimeMode } from "@/lib/storeMode";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,8 +20,16 @@ export async function POST(req: Request) {
   if (denied) return denied;
   if (!SUPABASE_CONFIGURED) {
     return NextResponse.json(
-      { error: "?????? ???? ?????? ????. ??? ??? ????? ????." },
+      { error: "המערכת אינה מוגדרת כרגע. נסו שוב מאוחר יותר." },
       { status: 503 },
+    );
+  }
+
+  const storeMode = await getStoreMode();
+  if (!isRealtimeMode(storeMode)) {
+    return NextResponse.json(
+      { error: "מכירת דוכן זמינה רק במצב מכירה חיה (Real-Time Mode)" },
+      { status: 400 },
     );
   }
 
@@ -28,13 +37,13 @@ export async function POST(req: Request) {
   try {
     payload = await req.json();
   } catch {
-    return NextResponse.json({ error: "??? ????? ???? ????" }, { status: 400 });
+    return NextResponse.json({ error: "גוף הבקשה אינו תקין" }, { status: 400 });
   }
 
   const parsed = SaleSchema.safeParse(payload);
   if (!parsed.success) {
     return NextResponse.json(
-      { error: "????? ?????? ???? ??????", details: parsed.error.flatten() },
+      { error: "נתוני המכירה אינם תקינים", details: parsed.error.flatten() },
       { status: 400 },
     );
   }
@@ -52,8 +61,38 @@ export async function POST(req: Request) {
 
     if (productError || !product) {
       return NextResponse.json(
-        { error: "???? ?? ????" },
+        { error: "מוצר לא נמצא" },
         { status: 404 },
+      );
+    }
+
+    // Check current stock for better error messages
+    const { data: currentStock, error: stockErr } = await admin
+      .from("inventory")
+      .select("live_stock_count")
+      .eq("product_id", product_id)
+      .single();
+
+    if (stockErr || currentStock === null) {
+      return NextResponse.json(
+        { error: "מוצר לא נמצא במלאי" },
+        { status: 404 },
+      );
+    }
+
+    const available = currentStock.live_stock_count ?? 0;
+
+    if (available <= 0) {
+      return NextResponse.json(
+        { error: "המלאי נגמר" },
+        { status: 409 },
+      );
+    }
+
+    if (qty > available) {
+      return NextResponse.json(
+        { error: `הכמות המבוקשת (${qty}) גדולה מהמלאי הזמין (${available})` },
+        { status: 409 },
       );
     }
 
@@ -64,7 +103,7 @@ export async function POST(req: Request) {
     });
     if (decErr || after === null || after === undefined) {
       return NextResponse.json(
-        { error: "??? ????? ???? ?????" },
+        { error: "אין מספיק מלאי לביצוע המכירה" },
         { status: 409 },
       );
     }
@@ -82,7 +121,7 @@ export async function POST(req: Request) {
     const { data: order, error: orderError } = await admin
       .from("orders")
       .insert({
-        customer_name: "????? ?????",
+        customer_name: "לקוח דוכן",
         customer_phone: "",
         delivery_address: null,
         items: orderItems,
@@ -90,7 +129,7 @@ export async function POST(req: Request) {
         delivery_type: "pickup",
         delivery_fee: 0,
         is_member: false,
-        notes: "????? ????? ?????",
+        notes: "מכירה בדוכן",
         status: "approved",
         fulfillment_type: "pickup",
         payment_method,
@@ -109,6 +148,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ order }, { status: 201 });
   } catch (e) {
     console.error(e);
-    return NextResponse.json({ error: "????? ???" }, { status: 500 });
+    return NextResponse.json({ error: "שגיאת שרת" }, { status: 500 });
   }
 }

@@ -40,7 +40,7 @@ const DialogContent = React.forwardRef<
       {...props}
     >
       {children}
-      <DialogPrimitive.Close className="absolute end-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
+      <DialogPrimitive.Close className="absolute end-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline:none focus:ring-2 focus:ring-ring focus:ring-offset-2">
         <X className="h-5 w-5" />
         <span className="sr-only">סגור</span>
       </DialogPrimitive.Close>
@@ -59,17 +59,28 @@ const DialogHeader = ({
   />
 );
 
+// Use React.createElement to avoid SWC namespace JSX parsing issue
 const DialogTitle = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Title>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Title>
->(({ className, ...props }, ref) => (
-  <DialogPrimitive.Title
-    ref={ref}
-    className={cn("text-lg font-semibold", className)}
+>(({ className, ...props }, ref) => {
+  return React.createElement(DialogPrimitive.Title, {
+    ref,
+    className: cn("text-lg font-semibold", className),
+    ...props,
+  });
+});
+DialogTitle.displayName = DialogPrimitive.Title.displayName;
+
+const DialogFooter = ({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLDivElement>) => (
+  <div
+    className={cn("flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2 gap-2 p-4 border-t", className)}
     {...props}
   />
-));
-DialogTitle.displayName = DialogPrimitive.Title.displayName;
+);
 
 export {
   Dialog,
@@ -77,5 +88,6 @@ export {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
   DialogClose,
 };

@@ -94,17 +94,21 @@ export default function AdminProductsPage() {
     }
   }
 
-  async function softDelete(p: Product) {
-    if (!confirm(`להעביר את "${p.title}" ללא פעיל?`)) return;
-    setProducts((prev) =>
-      prev.map((x) => (x.id === p.id ? { ...x, is_active: !p.is_active } : x)),
-    );
+  async function deleteProduct(p: Product) {
+    if (!confirm(`למחוק את "${p.title}" לצמיתות?`)) return;
     try {
-      await fetch(`/api/admin/products/${p.id}`, {
+      const res = await fetch(`/api/admin/products/${p.id}`, {
         method: "DELETE",
       });
-    } catch {
-      setError("מחיקה נכשלה");
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(body.error ?? "מחיקה נכשלה");
+      }
+      setProducts((prev) => prev.filter((product) => product.id !== p.id));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "מחיקה נכשלה");
       void load();
     }
   }
@@ -128,22 +132,6 @@ export default function AdminProductsPage() {
         <div className="container flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
           <AdminNav />
           <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => load()}
-              disabled={loading}
-              className="border-primary/20 hover:border-primary/40 hover:bg-primary/5"
-            >
-              <RefreshCw className={`h-4 w-4 ml-1.5 ${loading ? "animate-spin" : ""}`} />
-              רענון
-            </Button>
-            <Button asChild size="sm">
-              <Link href="/admin/products/new">
-                <Plus className="h-4 w-4" />
-                מוצר חדש
-              </Link>
-            </Button>
             <Button asChild size="sm" variant="outline">
               <Link href="/" target="_blank">
                 <ExternalLink className="h-4 w-4" />
@@ -159,6 +147,31 @@ export default function AdminProductsPage() {
       </header>
 
       <div className="container space-y-4 py-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">ניהול מוצרים</h1>
+            <p className="text-sm text-muted-foreground mt-1">הוספה, עריכה, סידור ומחיקה של מוצרי החנות</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => load()}
+              disabled={loading}
+              className="border-primary/20 hover:border-primary/40 hover:bg-primary/5"
+            >
+              <RefreshCw className={`h-4 w-4 ml-1.5 ${loading ? "animate-spin" : ""}`} />
+              רענון
+            </Button>
+            <Button asChild size="sm">
+              <Link href="/admin/products/new">
+                <Plus className="h-4 w-4" />
+                הוסף מוצר
+              </Link>
+            </Button>
+          </div>
+        </div>
+
         {error && (
           <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
             {error}
@@ -272,7 +285,7 @@ export default function AdminProductsPage() {
                            size="sm"
                            aria-label={`מחק המוצר ${p.id}`}
                            title="מחק"
-                           onClick={() => softDelete(p)}
+                            onClick={() => deleteProduct(p)}
                          >
                            <Trash2 className="h-3.5 w-3.5 text-destructive" />
                          </Button>

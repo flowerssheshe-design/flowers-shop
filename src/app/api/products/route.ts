@@ -18,15 +18,15 @@ export async function GET() {
       .select("*")
       .eq("is_active", true)
       .order("sort_order", { ascending: true });
-    if (error) {
+if (error) {
       return NextResponse.json(
-        { error: "????? ?????? ?????" },
+        { error: "שגיאה בטעינת מוצרים" },
         { status: 500 },
       );
     }
     return NextResponse.json({ products: (data as Product[]) ?? [] });
   } catch (e) {
     console.error(e);
-    return NextResponse.json({ error: "????? ???" }, { status: 500 });
+    return NextResponse.json({ error: "שגיאת שרת" }, { status: 500 });
   }
 }

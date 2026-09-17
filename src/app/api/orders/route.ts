@@ -3,7 +3,7 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SUPABASE_CONFIGURED, CLUB_DISCOUNT_THRESHOLD } from "@/lib/constants";
-import { isLiveStallPhase } from "@/lib/cycleTime";
+import { getStoreMode, isRealtimeMode } from "@/lib/storeMode";
 import type { Order } from "@/types";
 
 export const runtime = "nodejs";
@@ -74,7 +74,7 @@ export async function POST(req: Request) {
     status = "approved";
   }
 
-  let qualifies = false;
+let qualifies = false;
   if (user) {
     try {
       const admin = createAdminClient();
@@ -88,7 +88,8 @@ export async function POST(req: Request) {
   }
 
   let inventoryDeducted = false;
-  if (isLiveStallPhase() && body.items.length > 0) {
+  const storeMode = await getStoreMode();
+  if (isRealtimeMode(storeMode) && body.items.length > 0) {
     const admin = createAdminClient();
     for (const item of body.items) {
       // Atomic check-and-decrement; returns NULL when stock is insufficient.

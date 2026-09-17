@@ -52,7 +52,6 @@ export async function GET() {
     const { data: allOrders, error: ordersError } = await admin
       .from("orders")
       .select("user_id, status")
-      .neq("status", "archived")
       .not("user_id", "is", null);
 
     const countMap = new Map<string, { orders: number; completed: number }>();
@@ -63,7 +62,7 @@ export async function GET() {
       }>) {
         const prev = countMap.get(o.user_id) ?? { orders: 0, completed: 0 };
         prev.orders += 1;
-        if (o.status === "approved" || o.status === "completed") {
+        if (o.status === "approved" || o.status === "completed" || o.status === "archived") {
           prev.completed += 1;
         }
         countMap.set(o.user_id, prev);

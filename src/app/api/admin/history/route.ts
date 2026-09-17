@@ -8,6 +8,56 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+/**
+ * Recompute the aggregate financial fields of a stored archive from its
+ * already-correct per-segment values (preorders_* / stall_*) plus the week's
+ * recorded expenses. This guarantees the displayed figures are always
+ * consistent regardless of how/when the archive was originally written:
+ *   - gross_profit = preorders_profit + stall_profit
+ *     (= total_revenue - total_cost, where cost is only for *sold* items)
+ *   - total_cost / total_supplier_cost = sum of cost prices of sold items
+ *   - stall_sales_count = units sold at the stall (inventory-derived)
+ *   - total_net_profit = gross_profit - expenses for the archived week
+ */
+function recomputeArchive(arc: WeeklyArchive, weekExpenses: number): WeeklyArchive {
+  const preRev = Number(arc.preorders_revenue || 0);
+  const preProf = Number(arc.preorders_profit || 0);
+  const preCost = preRev - preProf;
+
+  const stallRev = Number(arc.stall_revenue || 0);
+  const stallProf = Number(arc.stall_profit || 0);
+  const stallCost = stallRev - stallProf;
+
+  const totalCost = preCost + stallCost;
+  const grossProfit = preProf + stallProf;
+
+  // Stall sales are inventory-tracked (units_sold = initial - live).
+  // Prefer the snapshot's inventory totals; fall back to the stored column.
+  let stallSalesCount: number = Number(arc.stall_sales_count || 0);
+  try {
+    const snap = (arc.snapshot_data ?? {}) as Record<string, unknown>;
+    const inv = (snap?.stall_inventory ?? {}) as Record<string, unknown> | undefined;
+    const totals = (inv?.totals ?? {}) as { units_sold?: number | string } | undefined;
+    const units = Number(totals?.units_sold ?? 0);
+    if (!Number.isNaN(units) && units >= 0) {
+      stallSalesCount = units;
+    }
+  } catch {
+    // keep fallback
+  }
+
+  return {
+    ...arc,
+    total_revenue: preRev + stallRev,
+    total_cost: totalCost,
+    gross_profit: grossProfit,
+    total_supplier_cost: totalCost,
+    stall_sales_count: stallSalesCount,
+    total_expenses: weekExpenses,
+    total_net_profit: grossProfit - weekExpenses,
+  } as WeeklyArchive;
+}
+
 export async function GET(req: Request) {
   const denied = requireAdmin();
   if (denied) return denied;
@@ -27,33 +77,52 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "טעינת היסטוריה נכשלה" }, { status: 500 });
     }
 
+    const rawArchives = (archives as WeeklyArchive[] | null) ?? [];
+
+    // Bucket recorded expenses by archive week so each archive's net profit
+    // is gross_profit - expenses incurred during that week.
+    const { data: expenseRows } = await admin
+      .from("expenses")
+      .select("amount, created_at")
+      .order("created_at", { ascending: true });
+    const expenses = (expenseRows ?? []) as Array<{ amount: number; created_at: string }>;
+
+    const enriched = rawArchives.map((a) => {
+      const ws = new Date(a.week_start);
+      const we = new Date(a.week_end);
+      const weekExpenses = expenses.reduce((sum, e) => {
+        const eAt = new Date(e.created_at);
+        if (eAt >= ws && eAt < we) return sum + Number(e.amount || 0);
+        return sum;
+      }, 0);
+      return recomputeArchive(a, weekExpenses);
+    });
+
     let orders: Order[] = [];
     let selectedTopProducts: TopProduct[] = [];
     if (archiveId) {
-      const archive = (archives ?? []).find(
-        (a) => (a as WeeklyArchive).id === archiveId,
+      const archive = enriched.find(
+        (a) => a.id === archiveId,
       );
       if (archive) {
         const { data: ord } = await admin
           .from("orders")
           .select("*")
-          .gte("created_at", (archive as WeeklyArchive).week_start)
-          .lt("created_at", (archive as WeeklyArchive).week_end)
+          .gte("created_at", archive.week_start)
+          .lt("created_at", archive.week_end)
           .order("created_at", { ascending: false });
         orders = (ord as Order[]) ?? [];
         selectedTopProducts =
-          ((archive as WeeklyArchive).top_products as TopProduct[]) ?? [];
+          (archive.top_products as TopProduct[]) ?? [];
       }
     }
 
     return NextResponse.json({
-      archives: (archives as WeeklyArchive[]) ?? [],
+      archives: enriched,
       orders,
       topProducts: archiveId
         ? selectedTopProducts
-        : ((archives?.[0] as WeeklyArchive | undefined)?.top_products as
-            | TopProduct[]
-            | undefined) ?? [],
+        : ((enriched?.[0]?.top_products as TopProduct[] | undefined) ?? []),
     });
   } catch (e) {
     console.error(e);

@@ -6,13 +6,13 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function formatILS(value: number): string {
+export function formatILS(value: number | null | undefined): string {
   return new Intl.NumberFormat("he-IL", {
     style: "currency",
     currency: "ILS",
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
-  }).format(value);
+  }).format((value as number) || 0);
 }
 
 export function calculateMemberPrice(

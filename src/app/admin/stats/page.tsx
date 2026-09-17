@@ -1,26 +1,18 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
-  ArrowUpRight,
-  ArrowDownRight,
   ExternalLink,
   Loader2,
   LogOut,
   RefreshCw,
-  Truck,
-  Store as StoreIcon,
-  Sparkles,
-  ShoppingBag,
-  TrendingUp,
-  Package,
+  DollarSign,
+  Receipt,
+  Target,
   Users,
-  Wallet,
-  Percent,
-  CircleDollarSign,
-  TrendingDown,
-  Eye,
+  ShoppingBag,
+  Package,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,28 +21,64 @@ import {
 } from "@/components/AdminGate";
 import { AdminNav } from "@/components/AdminNav";
 import { formatILS } from "@/lib/utils";
-import type { TopProduct, WeeklyKpi } from "@/types";
+import type {
+  StatsPayloadExtended,
+  AllTimeMetrics,
+  BestSeller,
+  SellThrough,
+  CustomerSegments,
+} from "@/types";
 
-type StatsPayload = {
-  kpi: WeeklyKpi;
-  previousKpi: WeeklyKpi;
-  topProducts: TopProduct[];
-  suppliers: TopProduct[];
-  memberRatio: { members: number; total: number; percent: number };
-  fulfillment: {
-    pickup: number;
-    delivery: number;
-    pickupPercent: number;
-    deliveryPercent: number;
+function parseMetric(value: unknown, field: string) {
+  if (
+    (typeof value !== "number" && typeof value !== "string") ||
+    (typeof value === "string" && value.trim() === "")
+  ) {
+    throw new Error(`Invalid stats response: ${field} is ${String(value)}`);
+  }
+
+  const metric = Number(value);
+  if (!Number.isFinite(metric)) {
+    throw new Error(`Invalid stats response: ${field} is ${String(value)}`);
+  }
+
+  return metric;
+}
+
+function parseStatsPayload(payload: unknown): StatsPayloadExtended {
+  if (!payload || typeof payload !== "object") {
+    throw new Error("Invalid stats response: expected a JSON object");
+  }
+
+  const source = payload as Partial<StatsPayloadExtended> & {
+    allTimeMetrics?: Partial<AllTimeMetrics>;
   };
-  weekStart: string;
-  weekEnd: string;
-  threshold: number;
-};
+  if (!source.allTimeMetrics) {
+    throw new Error("Invalid stats response: missing allTimeMetrics");
+  }
+
+  return {
+    ...source,
+    allTimeMetrics: {
+      cumulative_gross_profit: parseMetric(
+        source.allTimeMetrics.cumulative_gross_profit,
+        "cumulative_gross_profit",
+      ),
+      total_expenses: parseMetric(
+        source.allTimeMetrics.total_expenses,
+        "total_expenses",
+      ),
+      true_net_profit: parseMetric(
+        source.allTimeMetrics.true_net_profit,
+        "true_net_profit",
+      ),
+    },
+  } as StatsPayloadExtended;
+}
 
 export default function AdminStatsPage() {
   const [ready, setReady] = useState(false);
-  const [data, setData] = useState<StatsPayload | null>(null);
+  const [data, setData] = useState<StatsPayloadExtended | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -67,12 +95,32 @@ export default function AdminStatsPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/admin/stats", { cache: "no-store" });
-      if (!res.ok) throw new Error("טעינת נתונים נכשלה");
-      const data = (await res.json()) as StatsPayload;
-      setData(data);
+      const res = await fetch("/api/admin/stats", {
+        cache: "no-store",
+        headers: { "Cache-Control": "no-cache" },
+      });
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        const error = new Error(
+          `Stats request failed (${res.status}): ${body || res.statusText}`,
+        );
+        console.error("Admin stats fetch failed:", error);
+        throw error;
+      }
+
+      let payload: unknown;
+      try {
+        payload = await res.json();
+      } catch (e) {
+        console.error("Admin stats response parsing failed:", e);
+        throw e;
+      }
+
+      setData(parseStatsPayload(payload));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "שגיאה");
+      const error = e instanceof Error ? e : new Error(String(e));
+      console.error("Admin stats load failed:", error);
+      setError(error.message);
     } finally {
       setLoading(false);
     }
@@ -81,6 +129,16 @@ export default function AdminStatsPage() {
   function logout() {
     clearAdminAuth();
     window.location.replace("/admin");
+  }
+
+  function formatDateRange(a: string, b: string) {
+    const f = (s: string) =>
+      new Date(s).toLocaleDateString("he-IL", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      });
+    return `${f(a)} – ${f(b)}`;
   }
 
   if (!ready) {
@@ -145,187 +203,55 @@ export default function AdminStatsPage() {
           </div>
         ) : (
           <>
-            {/* KPI cards */}
-            <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {/* All-Time Financial Summary Cards */}
+            <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <KpiCard
-                icon={<Wallet className="h-5 w-5" />}
-                title="הכנסות השבוע"
-                value={formatILS(data.kpi.total_revenue)}
-                subtitle={`מוצרים ${formatILS(data.kpi.products_revenue)} · משלוחים ${formatILS(data.kpi.delivery_revenue)}`}
-                delta={percentChange(
-                  data.kpi.total_revenue,
-                  data.previousKpi.total_revenue,
-                )}
+                icon={<DollarSign className="h-5 w-5 text-emerald-600" />}
+                title="רווח גולמי מצטבר (כל הזמנים)"
+                value={formatILS(data.allTimeMetrics.cumulative_gross_profit)}
+                subtitle="סכום רווח גולמי מכל הסבבים + שבוע נוכחי"
               />
               <KpiCard
-                icon={<ShoppingBag className="h-5 w-5" />}
-                title="מספר הזמנות"
-                value={String(data.kpi.orders_count)}
-                subtitle={`ממתינות + מאושרות + שהושלמו`}
-                delta={percentChange(
-                  data.kpi.orders_count,
-                  data.previousKpi.orders_count,
-                )}
+                icon={<Receipt className="h-5 w-5 text-rose-600" />}
+                title="סך כל ההוצאות"
+                value={formatILS(data.allTimeMetrics.total_expenses)}
+                subtitle="חד-פעמיות וקבועות"
               />
               <KpiCard
-                icon={<Eye className="h-5 w-5" />}
-                title="ביקורים באתר"
-                value={String(data.kpi.visitors_count)}
-                subtitle="מבקרים ייחודיים השבוע"
-              />
-              <KpiCard
-                icon={<TrendingUp className="h-5 w-5" />}
-                title="ממוצע הזמנה (AOV)"
-                value={formatILS(data.kpi.avg_order_value)}
-                subtitle="סכום ממוצע לכל הזמנה"
-              />
-              <KpiCard
-                icon={<Users className="h-5 w-5" />}
-                title="לקוחות"
-                value={`${data.kpi.new_customers_count} חדשים · ${data.kpi.returning_customers_count} חוזרים`}
-                subtitle="מתחילת השבוע"
-              />
-              <KpiCard
-                icon={<CircleDollarSign className="h-5 w-5" />}
-                title="עלות סחורות"
-                value={formatILS(data.kpi.total_cost)}
-                subtitle="עלות עלות לספקים"
-              />
-              <KpiCard
-                icon={<TrendingUp className="h-5 w-5" />}
-                title="רווח גולמי"
-                value={formatILS(data.kpi.gross_profit)}
-                subtitle={`מרווח ${data.kpi.orders_count > 0 ? Math.round((data.kpi.gross_profit / data.kpi.total_revenue) * 100) : 0}% מההכנסות`}
-                delta={percentChange(
-                  data.kpi.gross_profit,
-                  data.previousKpi.gross_profit,
-                )}
-              />
-              <KpiCard
-                icon={<TrendingDown className="h-5 w-5" />}
-                title="הפסדים (ביטולים)"
-                value={formatILS(data.kpi.cancelled_orders_value)}
-                subtitle={`${data.kpi.cancelled_orders_count} הזמנות שבוטלו`}
+                icon={<Target className="h-5 w-5 text-primary" />}
+                title="רווח נקי אמיתי (כל הזמנים)"
+                value={formatILS(data.allTimeMetrics.true_net_profit)}
+                subtitle="רווח גולמי מצטבר פחות סך הוצאות"
+                delta={data.allTimeMetrics.true_net_profit >= 0 ? 100 : -100}
               />
             </section>
 
-            {/* Fulfillment + Member ratio */}
+            {/* Split Top Sellers (Pre-Orders vs Stall Sales) */}
             <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <RatioCard
-                title="איסוף עצמי מול משלוח"
-                segments={[
-                  {
-                    label: "איסוף עצמי",
-                    icon: <StoreIcon className="h-4 w-4" />,
-                    value: data.fulfillment.pickup,
-                    percent: data.fulfillment.pickupPercent,
-                  },
-                  {
-                    label: "משלוח עד הבית",
-                    icon: <Truck className="h-4 w-4" />,
-                    value: data.fulfillment.delivery,
-                    percent: data.fulfillment.deliveryPercent,
-                  },
-                ]}
+              <BestSellerCard
+                title="הנמכר ביותר (הזמנות מראש)"
+                subtitle="מאתר האינטרנט לבד"
+                icon={<ShoppingBag className="h-5 w-5 text-amber-600" />}
+                data={data.bestSellerPreorders}
               />
-              <RatioCard
-                title={`לקוחות קבועים (מעל ${data.threshold} הזמנות)`}
-                segments={[
-                  {
-                    label: "לקוח קבוע",
-                    icon: <Sparkles className="h-4 w-4 text-gold" />,
-                    value: data.memberRatio.members,
-                    percent: data.memberRatio.percent,
-                  },
-                  {
-                    label: "לקוח רגיל",
-                    icon: <Users className="h-4 w-4" />,
-                    value: Math.max(
-                      data.memberRatio.total - data.memberRatio.members,
-                      0,
-                    ),
-                    percent: Math.max(100 - data.memberRatio.percent, 0),
-                  },
-                ]}
+              <BestSellerCard
+                title="הנמכר ביותר (מכירה בדוכן)"
+                subtitle="מהדוכן בלבד"
+                icon={<Package className="h-5 w-5 text-emerald-600" />}
+                data={data.bestSellerStallSales}
               />
             </section>
 
-            {/* Top products */}
-            <section className="rounded-xl border bg-card p-4 shadow-sm">
-              <div className="mb-3 flex items-center justify-between">
-                <h2 className="flex items-center gap-2 text-lg font-bold">
-                  <Package className="h-5 w-5 text-primary" />
-                  זרים מובילים בשבוע
-                </h2>
-                <span className="text-xs text-muted-foreground">
-                  לפי יחידות שנמכרו
-                </span>
-              </div>
-              {data.topProducts.length === 0 ? (
-                <p className="py-6 text-center text-sm text-muted-foreground">
-                  אין נתונים להצגה.
-                </p>
-              ) : (
-                <Table
-                  headers={["#", "מוצר", "יחידות", "הכנסה", "עלות", "רווח"]}
-                  rows={data.topProducts.map((p, idx) => [
-                    String(idx + 1),
-                    p.title,
-                    `${p.units} יח׳`,
-                    formatILS(p.revenue),
-                    formatILS(p.cost),
-                    formatILS(p.profit),
-                  ])}
-                />
-              )}
-            </section>
+            {/* Stall-Exclusive Sell-Through Rate */}
+            <SellThroughCard data={data.highestSellThrough} />
 
-            {/* Supplier aggregation */}
-            <section className="rounded-xl border bg-card p-4 shadow-sm">
-              <div className="mb-3 flex items-center justify-between">
-                <h2 className="flex items-center gap-2 text-lg font-bold">
-                  <Percent className="h-5 w-5 text-primary" />
-                  סיכום הזמנה מספקים
-                </h2>
-                <span className="text-xs text-muted-foreground">
-                  כמויות להזמנה מהספקים לשבוע הנוכחי
-                </span>
-              </div>
-              {data.suppliers.length === 0 ? (
-                <p className="py-6 text-center text-sm text-muted-foreground">
-                  אין נתונים להצגה.
-                </p>
-              ) : (
-                <Table
-                  headers={["#", "זר", "כמות להזמנה"]}
-                  rows={data.suppliers.map((p, idx) => [
-                    String(idx + 1),
-                    p.title,
-                    `${p.units} יחידות`,
-                  ])}
-                />
-              )}
-            </section>
+            {/* Fast Customer Metrics */}
+            <CustomerSegmentsCard data={data.customerSegments} />
           </>
         )}
       </div>
     </main>
   );
-}
-
-function formatDateRange(a: string, b: string) {
-  const f = (s: string) =>
-    new Date(s).toLocaleDateString("he-IL", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    });
-  return `${f(a)} – ${f(b)}`;
-}
-
-function percentChange(current: number, prev: number): number | null {
-  if (!prev) return null;
-  return Math.round(((current - prev) / prev) * 100);
 }
 
 function KpiCard({
@@ -354,99 +280,130 @@ function KpiCard({
       )}
       {delta != null && (
         <p
-          className={`mt-1 inline-flex items-center gap-0.5 text-xs font-medium ${
+          className={`mt-1 text-xs font-medium ${
             positive ? "text-emerald-600" : "text-rose-600"
           }`}
         >
-          {positive ? (
-            <ArrowUpRight className="h-3.5 w-3.5" />
-          ) : (
-            <ArrowDownRight className="h-3.5 w-3.5" />
-          )}
           {positive ? "+" : ""}
-          {delta}% לעומת שבוע קודם
+          {delta}%
         </p>
       )}
     </div>
   );
 }
 
-function RatioCard({
+function BestSellerCard({
   title,
-  segments,
+  subtitle,
+  icon,
+  data,
 }: {
   title: string;
-  segments: Array<{
-    label: string;
-    icon: React.ReactNode;
-    value: number;
-    percent: number;
-  }>;
+  subtitle?: string;
+  icon: React.ReactNode;
+  data: BestSeller | null;
 }) {
   return (
     <div className="rounded-xl border bg-card p-4 shadow-sm">
-      <h2 className="mb-3 text-sm font-semibold">{title}</h2>
-      <div className="space-y-3">
-        {segments.map((s) => (
-          <div key={s.label}>
-            <div className="mb-1 flex items-center justify-between text-sm">
-              <span className="inline-flex items-center gap-1.5">
-                {s.icon}
-                {s.label}
-              </span>
-              <span className="tabular-nums">
-                {s.value} · {s.percent}%
-              </span>
+      <div className="mb-3 flex items-center gap-2">
+        <span className="rounded-md bg-primary/10 p-1.5 text-primary">{icon}</span>
+        <h2 className="flex items-center gap-2 text-lg font-bold">
+          {title}
+        </h2>
+      </div>
+      {data ? (
+        <div className="space-y-3">
+          <div className="flex items-center gap-3">
+            <div className="rounded-full bg-amber-100 p-3 text-amber-700 text-2xl font-bold">
+              #1
             </div>
-            <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted">
-              <div
-                className="h-full rounded-full bg-primary transition-all"
-                style={{ width: `${Math.max(0, Math.min(100, s.percent))}%` }}
-              />
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold truncate">{data.title}</p>
+              <p className="text-sm text-muted-foreground">
+                {(data.total_units || 0)} יחידות סה״ם
+              </p>
+              {subtitle && (
+                <p className="text-xs text-muted-foreground">{subtitle}</p>
+              )}
+            </div>
+            <div className="text-right">
+              <p className="font-bold text-primary">
+                {formatILS(data.total_revenue || 0)}
+              </p>
+              <p className="text-sm text-emerald-600">
+                רווח: {formatILS(data.total_profit || 0)}
+              </p>
             </div>
           </div>
-        ))}
-      </div>
+        </div>
+      ) : (
+        <p className="py-4 text-center text-sm text-muted-foreground">אין נתונים</p>
+      )}
     </div>
   );
 }
 
-function Table({
-  headers,
-  rows,
-}: {
-  headers: string[];
-  rows: Array<Array<string | number>>;
-}) {
+function SellThroughCard({ data }: { data: SellThrough | null }) {
   return (
-    <div className="overflow-x-auto rounded-lg border">
-      <table className="w-full text-sm">
-        <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
-          <tr>
-            {headers.map((h) => (
-              <th key={h} className="p-2 text-start font-medium">
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r, i) => (
-            <tr key={i} className="border-t">
-              {r.map((c, j) => (
-                <td
-                  key={j}
-                  className={`p-2 ${
-                    j === headers.length - 1 ? "tabular-nums font-medium" : ""
-                  }`}
-                >
-                  {c}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="rounded-xl border bg-card p-4 shadow-sm">
+      <div className="mb-3 flex items-center gap-2 text-muted-foreground">
+        <span className="rounded-md bg-primary/10 p-1.5 text-primary">
+          <Package className="h-5 w-5 text-emerald-600" />
+        </span>
+        <span className="text-xs font-medium">ניצול מלאי מיטבי (מכירה בדוכן בלבד)</span>
+      </div>
+      {data ? (
+        <div className="space-y-3">
+          <div className="flex items-center gap-3">
+            <div className="rounded-full bg-emerald-100 p-3 text-emerald-700 text-2xl font-bold">
+              %
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold truncate">{data.title}</p>
+              <p className="text-sm text-muted-foreground">
+                נמכרו {(data.total_sold || 0)} מתוך {(data.initial_stock || 0)} יחידות
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="brand-serif text-2xl font-bold text-emerald-600">
+                {(data.sell_through_pct || 0).toFixed(2)}%
+              </p>
+              <p className="text-xs text-muted-foreground">שיעור ניצול מלאי</p>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <p className="py-4 text-center text-sm text-muted-foreground">
+          אין נתונים (נדרש מלאי התחלתי במוצרים)
+        </p>
+      )}
+    </div>
+  );
+}
+
+function CustomerSegmentsCard({ data }: { data: CustomerSegments }) {
+  return (
+    <div className="rounded-xl border bg-card p-4 shadow-sm">
+      <div className="mb-3 flex items-center gap-2 text-muted-foreground">
+        <span className="rounded-md bg-primary/10 p-1.5 text-primary">
+          <Users className="h-5 w-5" />
+        </span>
+        <span className="text-xs font-medium">קהל לקוחות (כל ההזמנות)</span>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="text-center">
+          <div className="brand-serif text-3xl font-bold text-primary">
+            {(data?.regular_customers || 0).toString()}
+          </div>
+          <p className="text-sm text-muted-foreground">לקוחות רגילים (1–3 הזמנות)</p>
+        </div>
+        <div className="text-center">
+          <div className="brand-serif text-3xl font-bold text-gold">
+            {(data?.loyal_customers || 0).toString()}
+          </div>
+          <p className="text-sm text-muted-foreground">לקוחות קבועים (&gt;3 הזמנות)</p>
+        </div>
+      </div>
     </div>
   );
 }

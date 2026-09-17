@@ -16,13 +16,15 @@ export const WHATSAPP_CONFIGURED_PUBLIC = Boolean(
 );
 
 export const PICKUP_ADDRESS =
-  process.env.NEXT_PUBLIC_PICKUP_ADDRESS ?? "נחל חתירה 10,ירוחם";
+  process.env.NEXT_PUBLIC_PICKUP_ADDRESS ?? "נחל צין 37,ירוחם(ליד סופר פינתי)";
+export const PICKUP_HOURS =
+  process.env.NEXT_PUBLIC_PICKUP_HOURS ?? "10:00-15:00";
 export const BUSINESS_PHONE =
   process.env.NEXT_PUBLIC_BUSINESS_PHONE ?? "05-32455705";
 export const BUSINESS_EMAIL =
   process.env.NEXT_PUBLIC_BUSINESS_EMAIL ?? "flowerssheshe@gmail.com";
 export const BUSINESS_HOURS =
-  process.env.NEXT_PUBLIC_BUSINESS_HOURS ?? "ראשון-חמישי 08:00-18:00, שישי 08:00-14:00";
+  process.env.NEXT_PUBLIC_BUSINESS_HOURS ?? "ראשון-חמישי 08:00-18:00, שישי 09:00-14:00";
 
 export const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 export const SUPABASE_ANON_KEY =
@@ -38,10 +40,6 @@ export const CLUB_DISCOUNT_THRESHOLD = Number(
 export const MEMBER_DISCOUNT_PERCENT = Number(
   process.env.NEXT_PUBLIC_MEMBER_DISCOUNT_PERCENT ?? 10,
 );
-export const PREORDER_DEADLINE =
-  process.env.NEXT_PUBLIC_PREORDER_DEADLINE ?? "10:00";
-export const SAME_DAY_DEADLINE =
-  process.env.NEXT_PUBLIC_SAME_DAY_DEADLINE ?? "13:00";
 export const ADMIN_PIN = process.env.ADMIN_PIN ?? "1234";
 export const STALL_PIN = process.env.STALL_PIN ?? "5678";
 export const COURIER_PIN = process.env.COURIER_PIN ?? "9012";

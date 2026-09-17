@@ -49,6 +49,7 @@ export default function AdminInventoryPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'preOrders' | 'liveStock' | 'supplier' | 'archives'>('preOrders');
   const [preOrderData, setPreOrderData] = useState<PreOrderItem[]>([]);
+  const [preOrderUnitsById, setPreOrderUnitsById] = useState<Record<string, number>>({});
   const [supplier, setSupplier] = useState<SupplierAggregate[]>([]);
   const [supplierAdjustments, setSupplierAdjustments] = useState<Record<string, number>>({});
   const [error, setError] = useState<string | null>(null);
@@ -77,11 +78,15 @@ export default function AdminInventoryPage() {
     return sum + initial * r.cost_price;
   }, 0), [summary]);
 
+  // Stall revenue/profit: subtract pre-order units from inventory-based sales
+  // to avoid double-counting in Live Sale mode (online orders also deduct inventory).
   const stallRevenue = useMemo(() => summary.reduce((sum, r) => {
     const initial = Math.max(0, r.initial_stock_count);
-    const sold = Math.max(0, initial - r.live_stock_count);
-    return sum + sold * r.price_standard;
-  }, 0), [summary]);
+    const inventoryBasedSold = Math.max(0, initial - r.live_stock_count);
+    const preOrderUnits = preOrderUnitsById[r.product_id] ?? 0;
+    const stallUnits = Math.max(0, inventoryBasedSold - preOrderUnits);
+    return sum + stallUnits * r.price_standard;
+  }, 0), [summary, preOrderUnitsById]);
 
   const stallProfit = stallRevenue - stallCost;
 
@@ -91,11 +96,13 @@ export default function AdminInventoryPage() {
     summary.forEach((r) => {
       const initial = Math.max(0, r.initial_stock_count);
       totalInitial += initial;
-      totalSold += Math.max(0, initial - r.live_stock_count);
+      const inventoryBasedSold = Math.max(0, initial - r.live_stock_count);
+      const preOrderUnits = preOrderUnitsById[r.product_id] ?? 0;
+      totalSold += Math.max(0, inventoryBasedSold - preOrderUnits);
     });
     if (totalInitial <= 0) return 0;
     return (totalSold / totalInitial) * 100;
-  }, [summary]);
+  }, [summary, preOrderUnitsById]);
 
   const preorderStats = useMemo(() => {
     let units = 0;
@@ -182,13 +189,28 @@ export default function AdminInventoryPage() {
       const ordersData: any[] = ordersRes.orders ?? [];
       const supplierData: SupplierAggregate[] = supplierRes.aggregates ?? [];
 
-      const preOrderAgg: Record<string, PreOrderItem> = ordersData.reduce((acc, order) => {
+      // Build pre-order aggregation (only orders with a real customer phone)
+      // and simultaneously track per-product pre-order units to subtract from
+      // inventory-based stall sales (which include online-order deductions in Live Sale mode).
+      const preOrderAgg: Record<string, PreOrderItem> = {};
+      const preOrderUnitsById: Record<string, number> = {};
+
+      for (const order of ordersData) {
         const items = Array.isArray(order.items) ? order.items : [];
-        if (items.length === 0) return acc;
-        items.forEach((item: any) => {
+        if (items.length === 0) continue;
+        // Only count actual pre-orders (real customer phone) toward pre-order stats.
+        // Stall sales (empty customer_phone) are tracked via inventory deductions only.
+        if (!order.customer_phone || order.customer_phone.trim() === '') continue;
+
+        const isActive = order.status === "approved" || order.status === "completed";
+        if (!isActive) continue;
+
+        for (const item of items) {
           const prod = productMap.get(item.productId);
-          if (!prod) return;
-          const entry = acc[prod.id] || {
+          if (!prod) continue;
+          const qty = item.qty || 0;
+
+          const entry = preOrderAgg[prod.id] || {
             product_id: prod.id,
             title: prod.title,
             price_standard: prod.price_standard,
@@ -203,9 +225,7 @@ export default function AdminInventoryPage() {
             revenue: 0,
             profit: 0,
           };
-          const qty = item.qty || 0;
-          const isActive = order.status === "approved" || order.status === "completed";
-          if (!isActive) return;
+
           entry.approved_orders += qty;
           if (order.delivery_type === "pickup") {
             entry.pickup_total += qty;
@@ -224,13 +244,16 @@ export default function AdminInventoryPage() {
           }
           entry.revenue = entry.approved_orders * prod.price_standard;
           entry.profit = entry.approved_orders * Math.max(0, prod.price_standard - prod.cost_price);
-          acc[prod.id] = entry;
-        });
-        return acc;
-      }, {} as Record<string, PreOrderItem>);
+          preOrderAgg[prod.id] = entry;
+
+          // Track pre-order units per product for stall adjustment
+          preOrderUnitsById[prod.id] = (preOrderUnitsById[prod.id] ?? 0) + qty;
+        }
+      }
 
       const preOrderList = Object.values(preOrderAgg).sort((a, b) => a.title.localeCompare(b.title));
       setPreOrderData(preOrderList);
+      setPreOrderUnitsById(preOrderUnitsById);
 
       const activeProducts = products.filter((p) => p.is_active);
       const aggregateMap = new Map(supplierData.map((a) => [a.product_id, a]));
@@ -274,9 +297,12 @@ export default function AdminInventoryPage() {
       if (!res.ok) throw new Error("טעינת ארכיון נכשלה");
       const data = (await res.json()) as { archives: WeeklyArchive[] };
       setArchives(data.archives ?? ([] as WeeklyArchive[]));
-      if (!selectedArchive && (data.archives ?? []).length > 0) {
-        setSelectedArchive(data.archives[0]);
-      }
+      setSelectedArchive((prev) => {
+        if (!prev && (data.archives ?? []).length > 0) {
+          return data.archives[0];
+        }
+        return prev;
+      });
     } catch (e) {
       toast({ title: e instanceof Error ? e.message : "שגיאה", variant: "error" });
     } finally {
@@ -424,16 +450,6 @@ export default function AdminInventoryPage() {
         <div className="container flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
           <AdminNav />
           <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="destructive"
-              onClick={handleArchiveReset}
-              disabled={loading}
-              className="gap-1.5"
-            >
-              <Archive className="h-4 w-4" />
-              העבר לארכיון ואפס שבוע
-            </Button>
             <Button asChild size="sm" variant="outline" className="border-primary/20 hover:border-primary/40 hover:bg-primary/5">
               <a href="/" target="_blank" rel="noreferrer" className="flex items-center gap-1.5">
                 <Package className="h-4 w-4" />
@@ -476,7 +492,7 @@ export default function AdminInventoryPage() {
                 disabled={loading}
                 className="border-primary/20 hover:border-primary/40 hover:bg-primary/5"
               >
-                <RefreshCw className={`h-4 w-4 ml-1.5 ${loading ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`h-4 w-4 ml-1.5 ${loading ? "animate-spin" : ""}`} />
                 רענון
               </Button>
             </div>
@@ -672,9 +688,21 @@ export default function AdminInventoryPage() {
 
             {activeTab === 'liveStock' && (
               <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
-                <div className="p-5 border-b">
-                  <h2 className="text-lg font-semibold text-foreground">מלאי דוכן בשישי</h2>
-                  <p className="text-sm text-muted-foreground mt-1">ניהול מלאי חיה — מעקב אחר מכירות וסטטיסטיקת sell-through</p>
+                <div className="p-5 border-b flex items-center justify-between flex-wrap gap-3">
+                  <div>
+                    <h2 className="text-lg font-semibold text-foreground">מלאי דוכן בשישי</h2>
+                    <p className="text-sm text-muted-foreground mt-1">ניהול מלאי חיה — מעקב אחר מכירות וסטטיסטיקת sell-through</p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={handleArchiveReset}
+                    disabled={loading}
+                    className="gap-1.5"
+                  >
+                    <Archive className="h-4 w-4" />
+                    העבר לארכיון ואפס שבוע
+                  </Button>
                 </div>
                 {summary.length === 0 ? (
                   <div className="p-10 text-center">
@@ -697,39 +725,41 @@ export default function AdminInventoryPage() {
                       </thead>
                       <tbody className="divide-y divide-border">
                         {summary.map((item) => {
-                          const initialStock = Math.max(0, item.initial_stock_count);
-                          const unitsSold = Math.max(0, initialStock - item.live_stock_count);
-                          const sellThrough = initialStock > 0 ? (unitsSold / initialStock) * 100 : 0;
-                          const revenue = unitsSold * item.price_standard;
-                          const profit = unitsSold * Math.max(0, item.price_standard - item.cost_price);
-                          return (
-                            <tr key={item.product_id} className="hover:bg-muted/30 transition-colors">
-                              <td className="p-4 font-medium">{item.title}</td>
-                              <td className="p-4 tabular-nums text-muted-foreground">{initialStock}</td>
-                              <td className="p-4 tabular-nums font-medium text-foreground">{item.live_stock_count}</td>
-                              <td className="p-4 tabular-nums font-medium text-foreground">{unitsSold}</td>
-                              <td className="p-4 tabular-nums font-medium text-foreground">{formatILS(revenue)}</td>
-                              <td className="p-4 tabular-nums font-medium text-emerald-600 dark:text-emerald-400">{formatILS(profit)}</td>
-                              <td className="p-4 tabular-nums">
-                                <div className="flex items-center gap-2">
-                                  <div className="h-2 flex-1 rounded-full bg-muted overflow-hidden max-w-[80px]">
-                                    <div
-                                      className="h-full rounded-full bg-primary transition-all duration-500"
-                                      style={{ width: `${Math.min(100, Math.max(0, sellThrough))}%` }}
-                                    />
-                                  </div>
-                                  <span className={`text-xs font-medium tabular-nums ${
-                                    sellThrough >= 80 ? 'text-emerald-600 dark:text-emerald-400' :
-                                    sellThrough >= 50 ? 'text-orange-600 dark:text-orange-400' :
-                                    'text-muted-foreground'
-                                  }`}>
-                                    {sellThrough.toFixed(0)}%
-                                  </span>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
+    const initialStock = Math.max(0, item.initial_stock_count);
+    const inventoryBasedSold = Math.max(0, initialStock - item.live_stock_count);
+    const preOrderUnits = preOrderUnitsById[item.product_id] ?? 0;
+    const unitsSold = Math.max(0, inventoryBasedSold - preOrderUnits);
+    const sellThrough = initialStock > 0 ? (unitsSold / initialStock) * 100 : 0;
+    const revenue = unitsSold * item.price_standard;
+    const profit = unitsSold * Math.max(0, item.price_standard - item.cost_price);
+    return (
+      <tr key={item.product_id} className="hover:bg-muted/30 transition-colors">
+        <td className="p-4 font-medium">{item.title}</td>
+        <td className="p-4 tabular-nums text-muted-foreground">{initialStock}</td>
+        <td className="p-4 tabular-nums font-medium text-foreground">{item.live_stock_count}</td>
+        <td className="p-4 tabular-nums font-medium text-foreground">{unitsSold}</td>
+        <td className="p-4 tabular-nums font-medium text-foreground">{formatILS(revenue)}</td>
+        <td className="p-4 tabular-nums font-medium text-emerald-600 dark:text-emerald-400">{formatILS(profit)}</td>
+        <td className="p-4 tabular-nums">
+          <div className="flex items-center gap-2">
+            <div className="h-2 flex-1 rounded-full bg-muted overflow-hidden max-w-[80px]">
+              <div
+                className="h-full rounded-full bg-primary transition-all duration-500"
+                style={{ width: `${Math.min(100, Math.max(0, sellThrough))}%` }}
+              />
+            </div>
+            <span className={`text-xs font-medium tabular-nums ${
+              sellThrough >= 80 ? 'text-emerald-600 dark:text-emerald-400' :
+              sellThrough >= 50 ? 'text-orange-600 dark:text-orange-400' :
+              'text-muted-foreground'
+            }`}>
+              {sellThrough.toFixed(0)}%
+            </span>
+          </div>
+        </td>
+      </tr>
+    );
+  })}
                         {summary.length === 0 && (
                           <tr>
                             <td colSpan={7} className="p-6 text-center text-muted-foreground">
@@ -913,33 +943,33 @@ export default function AdminInventoryPage() {
                                 className="p-3 tabular-nums cursor-pointer"
                                 onClick={() => setSelectedArchive(a)}
                               >
-                                {a.orders_count}
+                                {a.orders_count || 0}
                               </td>
                               <td
                                 className="p-3 tabular-nums font-medium cursor-pointer"
                                 onClick={() => setSelectedArchive(a)}
                               >
-                                {formatILS(a.total_revenue)}
+                                {formatILS(a.total_revenue || 0)}
                               </td>
                               <td
                                 className={`p-3 tabular-nums font-medium cursor-pointer ${a.gross_profit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-destructive'}`}
                                 onClick={() => setSelectedArchive(a)}
                               >
-                                {formatILS(a.gross_profit)}
+                                {formatILS(a.gross_profit || 0)}
                               </td>
                               <td
                                 className="p-3 tabular-nums cursor-pointer"
                                 onClick={() => setSelectedArchive(a)}
                               >
-                                <span className="text-muted-foreground">{a.preorders_count} הזמנות</span>
-                                <span className="text-xs block text-muted-foreground/70">{formatILS(a.preorders_revenue)} · רווח {formatILS(a.preorders_profit)}</span>
+                                <span className="text-muted-foreground">{(a.preorders_count || 0)} הזמנות</span>
+                                <span className="text-xs block text-muted-foreground/70">{formatILS(a.preorders_revenue || 0)} · רווח {formatILS(a.preorders_profit || 0)}</span>
                               </td>
                               <td
                                 className="p-3 tabular-nums cursor-pointer"
                                 onClick={() => setSelectedArchive(a)}
                               >
-                                <span className="text-muted-foreground">{a.stall_sales_count} מכירות</span>
-                                <span className="text-xs block text-muted-foreground/70">{formatILS(a.stall_revenue)} · רווח {formatILS(a.stall_profit)}</span>
+                                <span className="text-muted-foreground">{(a.stall_sales_count || 0)} מכירות</span>
+                                <span className="text-xs block text-muted-foreground/70">{formatILS(a.stall_revenue || 0)} · רווח {formatILS(a.stall_profit || 0)}</span>
                               </td>
                               <td className="p-3 text-center">
                                 <Button
@@ -976,18 +1006,18 @@ export default function AdminInventoryPage() {
                       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                         <ArchiveSummaryCard
                           title="סה״כ הכנסות"
-                          value={formatILS(selectedArchive.total_revenue)}
-                          subtitle={`מוצרים ${formatILS(selectedArchive.products_revenue)} · משלוחים ${formatILS(selectedArchive.delivery_revenue)}`}
+                          value={formatILS(selectedArchive.total_revenue || 0)}
+                          subtitle={`מוצרים ${formatILS(selectedArchive.products_revenue || 0)} · משלוחים ${formatILS(selectedArchive.delivery_revenue || 0)}`}
                         />
                         <ArchiveSummaryCard
                           title="הזמנות"
-                          value={String(selectedArchive.orders_count)}
-                          subtitle={`${selectedArchive.pickup_count} איסוף · ${selectedArchive.delivery_count} משלוח`}
+                          value={String(selectedArchive.orders_count || 0)}
+                          subtitle={`${selectedArchive.pickup_count || 0} איסוף · ${selectedArchive.delivery_count || 0} משלוח`}
                         />
                         <ArchiveSummaryCard
                           title="רווח גולמי"
-                          value={formatILS(selectedArchive.gross_profit)}
-                          subtitle={`עלות ספקים ${formatILS(selectedArchive.total_cost)} · עלות ספקים ${formatILS(selectedArchive.total_supplier_cost)}`}
+                          value={formatILS(selectedArchive.gross_profit || 0)}
+                          subtitle={`עלות ספקים ${formatILS((selectedArchive.total_cost || selectedArchive.total_supplier_cost || 0))}`}
                         />
                         <ArchiveSummaryCard
                           title="תאריכים"
@@ -999,20 +1029,21 @@ export default function AdminInventoryPage() {
                       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                         <div className="rounded-xl border bg-muted/30 p-4">
                           <h3 className="text-sm font-semibold mb-2">הזמנות מוקדמות</h3>
-                          <p className="text-xs text-muted-foreground mb-1">{selectedArchive.preorders_count} הזמנות</p>
-                          <p className="text-sm font-medium">הכנסה: {formatILS(selectedArchive.preorders_revenue)}</p>
-                          <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400">רווח: {formatILS(selectedArchive.preorders_profit)}</p>
+                          <p className="text-xs text-muted-foreground mb-1">{(selectedArchive.preorders_count || 0)} הזמנות</p>
+                          <p className="text-sm font-medium">הכנסה: {formatILS(selectedArchive.preorders_revenue || 0)}</p>
+                          <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400">רווח: {formatILS(selectedArchive.preorders_profit || 0)}</p>
                         </div>
                         <div className="rounded-xl border bg-muted/30 p-4">
                           <h3 className="text-sm font-semibold mb-2">מכירות דוכן</h3>
-                          <p className="text-xs text-muted-foreground mb-1">{selectedArchive.stall_sales_count} מכירות</p>
-                          <p className="text-sm font-medium">הכנסה: {formatILS(selectedArchive.stall_revenue)}</p>
-                          <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400">רווח: {formatILS(selectedArchive.stall_profit)}</p>
+                          <p className="text-xs text-muted-foreground mb-1">{(selectedArchive.stall_sales_count || 0)} מכירות</p>
+                          <p className="text-sm font-medium">הכנסה: {formatILS(selectedArchive.stall_revenue || 0)}</p>
+                          <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400">רווח: {formatILS(selectedArchive.stall_profit || 0)}</p>
                         </div>
                         <div className="rounded-xl border bg-muted/30 p-4">
                           <h3 className="text-sm font-semibold mb-2">סה״כ רווח נטו</h3>
-                          <p className="text-xs text-muted-foreground mb-1">עלות ספקים: {formatILS(selectedArchive.total_supplier_cost)}</p>
-                          <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400">רווח נטו: {formatILS(selectedArchive.total_net_profit)}</p>
+                          <p className="text-xs text-muted-foreground mb-1">רווח גולמי: {formatILS(selectedArchive.gross_profit || 0)}</p>
+                          <p className="text-xs text-muted-foreground mb-1">הוצאות: {formatILS(selectedArchive.total_expenses || 0)}</p>
+                          <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400">רווח נטו: {formatILS(selectedArchive.total_net_profit || 0)}</p>
                         </div>
                       </div>
 

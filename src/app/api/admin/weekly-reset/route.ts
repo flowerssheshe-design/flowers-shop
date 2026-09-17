@@ -32,8 +32,7 @@ export async function POST() {
     const admin = createAdminClient();
     const { start, end } = getPreviousWeekBounds();
 
-    // 1. Fetch orders, active products, and inventory in parallel
-    const [ordersRes, productsRes, inventoryRes] = await Promise.all([
+    const [ordersRes, productsRes, inventoryRes, expensesRes] = await Promise.all([
       admin
         .from("orders")
         .select("*")
@@ -47,6 +46,11 @@ export async function POST() {
       admin
         .from("inventory")
         .select("product_id, live_stock_count, initial_stock_count"),
+      admin
+        .from("expenses")
+        .select("amount")
+        .gte("created_at", start.toISOString())
+        .lt("created_at", end.toISOString()),
     ]);
 
     if (ordersRes.error) {
@@ -56,11 +60,23 @@ export async function POST() {
       );
     }
 
+    if (expensesRes.error) {
+      return NextResponse.json(
+        { error: expensesRes.error.message || "שגיאה בטעינת הוצאות" },
+        { status: 500 },
+      );
+    }
+
     const orders = ordersRes.data ?? [];
     const products = productsRes.data ?? [];
     const inventoryRows = inventoryRes.data ?? [];
 
-    // Build product map with actual cost_price from DB (null-safe)
+    const totalExpenses = (expensesRes.data ?? []).reduce(
+      (sum: number, e: { amount: number | string | null | undefined }) =>
+        sum + Number(e?.amount || 0),
+      0,
+    );
+
     const productMap = new Map<string, { cost_price: number; title: string }>();
     products.forEach((p) => {
       productMap.set(p.id, {
@@ -69,7 +85,6 @@ export async function POST() {
       });
     });
 
-    // Helper: safely extract line items from an order
     function extractItems(order: any) {
       const items = Array.isArray(order.items) ? order.items : [];
       return items.map((item: any) => ({
@@ -80,104 +95,23 @@ export async function POST() {
       }));
     }
 
-    // Filter to approved/completed for the detailed breakdowns
-    const activeOrders = orders.filter((o) => o.status === "approved" || o.status === "completed");
-    const preorders = activeOrders.filter((o) => o.customer_phone !== "");
-    const stallSales = activeOrders.filter((o) => o.customer_phone === "");
-
-    // --- Pre-Orders Breakdown ---
-    let preordersRevenue = 0;
-    let preordersSupplierCost = 0;
-    const preorderItems: any[] = [];
-
-    preorders.forEach((order: any) => {
-      preordersRevenue += Number(order.total_amount || 0);
+    // --- Per-product pre-order units (to subtract from inventory-based stall sales) ---
+    const preOrderUnitsById = new Map<string, number>();
+    const activeOrdersForUnits = orders.filter((o) => o.status === "approved" || o.status === "completed");
+    for (const order of activeOrdersForUnits) {
+      // Only count actual pre-orders (real customer phone) toward pre-order stats.
+      // Stall sales (empty customer_phone) are tracked via inventory deductions only.
+      if (!order.customer_phone || order.customer_phone.trim() === '') continue;
       const items = extractItems(order);
-      items.forEach((item: any) => {
-        const cost = productMap.get(item.product_id)?.cost_price || 0;
-        preordersSupplierCost += item.qty * cost;
-        preorderItems.push({
-          order_id: order.id,
-          product_id: item.product_id,
-          title: item.title,
-          qty: item.qty,
-          price: item.price,
-          cost_price: cost,
-          line_total: item.qty * item.price,
-          line_cost: item.qty * cost,
-        });
-      });
-    });
+      for (const item of items) {
+        const pid = item.product_id;
+        preOrderUnitsById.set(pid, (preOrderUnitsById.get(pid) ?? 0) + item.qty);
+      }
+    }
 
-    const preordersProfit = preordersRevenue - preordersSupplierCost;
-
-    // --- Stall Sales Breakdown ---
-    let stallRevenue = 0;
-    let stallSupplierCost = 0;
-    const stallItems: any[] = [];
-
-    stallSales.forEach((order: any) => {
-      stallRevenue += Number(order.total_amount || 0);
-      const items = extractItems(order);
-      items.forEach((item: any) => {
-        const cost = productMap.get(item.product_id)?.cost_price || 0;
-        stallSupplierCost += item.qty * cost;
-        stallItems.push({
-          order_id: order.id,
-          product_id: item.product_id,
-          title: item.title,
-          qty: item.qty,
-          price: item.price,
-          cost_price: cost,
-          line_total: item.qty * item.price,
-          line_cost: item.qty * cost,
-        });
-      });
-    });
-
-    const stallProfit = stallRevenue - stallSupplierCost;
-
-    // --- Overall product stats (from all non-cancelled, non-archived orders) ---
-    const allActiveOrders = orders.filter((o) => o.status !== "archived");
-    const allItems = allActiveOrders.flatMap(extractItems);
-
-    const productStats = new Map<string, { units: number; revenue: number; cost: number }>();
-    allItems.forEach((item) => {
-      const existing = productStats.get(item.product_id) || { units: 0, revenue: 0, cost: 0 };
-      const cost = productMap.get(item.product_id)?.cost_price || 0;
-      productStats.set(item.product_id, {
-        units: existing.units + item.qty,
-        revenue: existing.revenue + item.qty * item.price,
-        cost: existing.cost + item.qty * cost,
-      });
-    });
-
-    const topProducts = Array.from(productStats.entries())
-      .map(([product_id, stats]) => ({
-        product_id,
-        title: productMap.get(product_id)?.title || "מוצר",
-        units: stats.units,
-        revenue: stats.revenue,
-        cost: stats.cost,
-        profit: stats.revenue - stats.cost,
-      }))
-      .sort((a, b) => b.units - a.units);
-
-    const productSales = [...topProducts].sort((a, b) => b.profit - a.profit);
-
-    const totalCost = topProducts.reduce((sum, p) => sum + p.cost, 0);
-    const grossProfit = topProducts.reduce((sum, p) => sum + p.profit, 0);
-    const totalRevenue = topProducts.reduce((sum, p) => sum + p.revenue, 0);
-    const deliveryRevenue = 0;
-    const productsRevenue = totalRevenue;
-    const pickupCount = allActiveOrders.filter((o) => o.delivery_type === "pickup").length;
-    const deliveryCount = allActiveOrders.filter((o) => o.delivery_type === "delivery").length;
-    const memberOrdersCount = allActiveOrders.filter((o) => o.is_member).length;
-    const customerPhones = new Set(allActiveOrders.map((o) => o.customer_phone).filter(Boolean));
-    const newCustomersCount = customerPhones.size;
-    const returningCustomersCount = 0;
-
-    // --- Per-product stall inventory breakdown ---
+    // --- Per-product stall inventory breakdown (from inventory snapshot) ---
+    // Subtract pre-order units from inventory-based sales to avoid double-counting
+    // in Live Sale mode (online orders also deduct live_stock_count).
     const invMap = new Map<string, { live: number; initial: number }>();
     for (const row of inventoryRows ?? []) {
       invMap.set(String(row.product_id), {
@@ -189,11 +123,13 @@ export async function POST() {
       const inv = invMap.get(String(p.id)) ?? { live: 0, initial: 0 };
       const initialStock = Math.max(0, inv.initial);
       const liveStock = Math.max(0, inv.live);
-      const unitsSold = Math.max(0, initialStock - liveStock);
+      const inventoryBasedSold = Math.max(0, initialStock - liveStock);
+      const preOrderUnits = preOrderUnitsById.get(String(p.id)) ?? 0;
+      const unitsSold = Math.max(0, inventoryBasedSold - preOrderUnits);
       const sellThrough = initialStock > 0 ? (unitsSold / initialStock) * 100 : 0;
       const revenue = unitsSold * Number(p.price_standard || 0);
       const profit = unitsSold * Math.max(0, Number(p.price_standard || 0) - Number(p.cost_price || 0));
-      const supplierCost = initialStock * Number(p.cost_price || 0);
+      const supplierCost = unitsSold * Number(p.cost_price || 0);
       return {
         product_id: String(p.id),
         title: p.title,
@@ -223,6 +159,125 @@ export async function POST() {
         ? Number(((stallTotals.units_sold / stallTotals.initial_stock_count) * 100).toFixed(2))
         : 0;
 
+    const stallInventoryRevenue = stallTotals.revenue;
+    const stallInventorySupplierCost = stallTotals.supplier_cost;
+    const stallInventoryProfit = stallTotals.profit;
+
+    // --- Order-based breakdowns ---
+    const activeOrders = orders.filter((o) => o.status === "approved" || o.status === "completed");
+    // Pre-orders are orders with a real customer phone (not empty/stall sale).
+    const preorders = activeOrders.filter((o) => o.customer_phone && o.customer_phone.trim() !== "");
+    // NOTE: stall sales are tracked via inventory deduction (see /api/stall/deduct),
+    // NOT via orders — so the stall count/revenue/profit below are inventory-based.
+
+    // --- Pre-Orders Breakdown ---
+    let preordersRevenue = 0;
+    let preordersSupplierCost = 0;
+    const preorderItems: any[] = [];
+
+    preorders.forEach((order: any) => {
+      preordersRevenue += Number(order.total_amount || 0);
+      const items = extractItems(order);
+      items.forEach((item: any) => {
+        const cost = productMap.get(item.product_id)?.cost_price || 0;
+        preordersSupplierCost += item.qty * cost;
+        preorderItems.push({
+          order_id: order.id,
+          product_id: item.product_id,
+          title: item.title,
+          qty: item.qty,
+          price: item.price,
+          cost_price: cost,
+          line_total: item.qty * item.price,
+          line_cost: item.qty * cost,
+        });
+      });
+    });
+
+    const preordersProfit = preordersRevenue - preordersSupplierCost;
+
+    // --- Overall product stats (from all non-archived orders, excluding stall sales) ---
+    // Stall sales (empty customer_phone) are tracked via inventory deductions, not orders.
+    const allActiveOrders = orders.filter((o) => o.status !== "archived" && o.customer_phone && o.customer_phone.trim() !== "");
+    const allItems = allActiveOrders.flatMap(extractItems);
+
+    const productStats = new Map<string, { units: number; revenue: number; cost: number }>();
+    allItems.forEach((item) => {
+      const existing = productStats.get(item.product_id) || { units: 0, revenue: 0, cost: 0 };
+      const cost = productMap.get(item.product_id)?.cost_price || 0;
+      productStats.set(item.product_id, {
+        units: existing.units + item.qty,
+        revenue: existing.revenue + item.qty * item.price,
+        cost: existing.cost + item.qty * cost,
+      });
+    });
+
+    const orderTopProducts = Array.from(productStats.entries())
+      .map(([product_id, stats]) => ({
+        product_id,
+        title: productMap.get(product_id)?.title || "מוצר",
+        units: stats.units,
+        revenue: stats.revenue,
+        cost: stats.cost,
+        profit: stats.revenue - stats.cost,
+      }))
+      .sort((a, b) => b.units - a.units);
+
+    // --- Merge top_products: inventory data takes priority (includes both channels) ---
+    const stallProductMap = new Map<string, { product_id: string; title: string; units_sold: number; revenue: number; supplier_cost: number; profit: number }>();
+    (stallByProduct || []).forEach((p) => {
+      stallProductMap.set(p.product_id, p);
+    });
+
+    const mergedTopProducts = orderTopProducts.map((op) => {
+      const stall = stallProductMap.get(op.product_id);
+      if (stall) {
+        return {
+          product_id: op.product_id,
+          title: stall.title,
+          units: stall.units_sold,
+          revenue: stall.revenue,
+          cost: stall.supplier_cost,
+          profit: stall.profit,
+        };
+      }
+      return op;
+    });
+    stallProductMap.forEach((stall) => {
+      if (!mergedTopProducts.find((p) => p.product_id === stall.product_id)) {
+        mergedTopProducts.push({
+          product_id: stall.product_id,
+          title: stall.title,
+          units: stall.units_sold,
+          revenue: stall.revenue,
+          cost: stall.supplier_cost,
+          profit: stall.profit,
+        });
+      }
+    });
+    mergedTopProducts.sort((a, b) => b.units - a.units);
+
+    const topProducts = mergedTopProducts;
+
+    // --- Unified archival metrics (Pre-Orders + Stall Inventory) ---
+    const unifiedTotalRevenue = preordersRevenue + stallInventoryRevenue;
+    const unifiedTotalSupplierCost = preordersSupplierCost + stallInventorySupplierCost;
+    const unifiedNetProfit = unifiedTotalRevenue - unifiedTotalSupplierCost;
+
+    const productSales = [...topProducts].sort((a, b) => b.profit - a.profit);
+
+    const totalCost = unifiedTotalSupplierCost;
+    const grossProfit = unifiedNetProfit;
+    const totalRevenue = unifiedTotalRevenue;
+    const deliveryRevenue = 0;
+    const productsRevenue = totalRevenue;
+    const pickupCount = allActiveOrders.filter((o) => o.delivery_type === "pickup").length;
+    const deliveryCount = allActiveOrders.filter((o) => o.delivery_type === "delivery").length;
+    const memberOrdersCount = allActiveOrders.filter((o) => o.is_member).length;
+    const customerPhones = new Set(allActiveOrders.map((o) => o.customer_phone).filter(Boolean));
+    const newCustomersCount = customerPhones.size;
+    const returningCustomersCount = 0;
+
     // --- Build JSON snapshot with itemized data ---
     const snapshot = {
       preorders: {
@@ -233,11 +288,11 @@ export async function POST() {
         items: preorderItems,
       },
       stall_sales: {
-        count: stallSales.length,
-        revenue: stallRevenue,
-        supplier_cost: stallSupplierCost,
-        profit: stallProfit,
-        items: stallItems,
+        count: stallTotals.units_sold,
+        revenue: stallInventoryRevenue,
+        supplier_cost: stallTotals.supplier_cost,
+        profit: stallInventoryProfit,
+        items: stallByProduct,
       },
       stall_inventory: {
         totals: stallTotals,
@@ -245,46 +300,14 @@ export async function POST() {
         products: stallByProduct,
       },
       supplier_cost: totalCost,
-      net_profit: grossProfit,
+      gross_profit: grossProfit,
+      expenses: totalExpenses,
+      net_profit: grossProfit - totalExpenses,
       archived_at: new Date().toISOString(),
     };
 
     const weekLabel = `סבב - ${start.toLocaleDateString("he-IL", { day: "2-digit", month: "2-digit", year: "numeric" })}`;
 
-    const payload: Record<string, unknown> = {
-      week_start: start.toISOString(),
-      week_end: end.toISOString(),
-      archived_at: new Date().toISOString(),
-      week_label: weekLabel,
-      total_revenue: totalRevenue,
-      delivery_revenue: deliveryRevenue,
-      products_revenue: productsRevenue,
-      total_cost: totalCost,
-      gross_profit: grossProfit,
-      orders_count: allActiveOrders.length,
-      pickup_count: pickupCount,
-      delivery_count: deliveryCount,
-      member_orders_count: memberOrdersCount,
-      new_customers_count: newCustomersCount,
-      returning_customers_count: returningCustomersCount,
-      preorders_count: preorders.length,
-      preorders_revenue: preordersRevenue,
-      preorders_profit: preordersProfit,
-      stall_sales_count: stallSales.length,
-      stall_revenue: stallRevenue,
-      stall_profit: stallProfit,
-      total_supplier_cost: totalCost,
-      total_net_profit: grossProfit,
-      top_products: topProducts,
-      product_sales: productSales,
-      snapshot_data: snapshot,
-    };
-
-    // 2. Insert archive row — progressive retry: if the insert fails (e.g. DB
-    // schema is behind the app and is missing some of the extended columns),
-    // strip unknown columns and retry until it succeeds. This guarantees we
-    // save every column that DOES exist instead of silently downgrading to
-    // the minimal 4-field payload.
     const fullPayload: Record<string, unknown> = {
       week_start: start.toISOString(),
       week_end: end.toISOString(),
@@ -306,11 +329,12 @@ export async function POST() {
       preorders_count: preorders.length,
       preorders_revenue: preordersRevenue,
       preorders_profit: preordersProfit,
-      stall_sales_count: stallSales.length,
-      stall_revenue: stallRevenue,
-      stall_profit: stallProfit,
+      stall_sales_count: stallTotals.units_sold,
+      stall_revenue: stallInventoryRevenue,
+      stall_profit: stallInventoryProfit,
       total_supplier_cost: totalCost,
-      total_net_profit: grossProfit,
+      total_expenses: totalExpenses,
+      total_net_profit: grossProfit - totalExpenses,
       top_products: topProducts,
       product_sales: productSales,
       snapshot_data: snapshot,
@@ -335,8 +359,6 @@ export async function POST() {
 
       archiveError = (error as unknown as { message?: string; details?: string }) ?? null;
       const msg = `${error?.message ?? ""} ${error?.details ?? ""}`.toLowerCase();
-      // Postgres "schema cache" / "does not exist" error → figure out which
-      // offending column the DB doesn't know and drop it, then retry.
       const missingColMatch = msg.match(/column\s+["']?([a-z_0-9]+)["']?\s\s+(?:of\s+relation|does not exist)/i);
       const unknownField = missingColMatch?.[1];
       if (unknownField && unknownField in attemptPayload) {
@@ -345,7 +367,6 @@ export async function POST() {
         archiveError = null;
         continue;
       }
-      // Fallback: drop the last (most-likely-newly-added) key and retry.
       const dropped = attemptKeys.pop();
       if (dropped) delete attemptPayload[dropped];
     }
@@ -365,7 +386,6 @@ export async function POST() {
 
     const finalArchive = archive;
 
-    // 3. ONLY AFTER SUCCESS: archive orders
     const archiveIds = allActiveOrders.map((o) => o.id);
     if (archiveIds.length > 0) {
       const { error: updateError } = await admin
@@ -380,7 +400,6 @@ export async function POST() {
       }
     }
 
-    // 4. ONLY AFTER SUCCESS: reset inventory for new week
     const { data: activeProducts, error: productsError } = await admin
       .from("products")
       .select("id")

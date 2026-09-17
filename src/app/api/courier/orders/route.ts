@@ -11,7 +11,7 @@ export async function GET() {
   const store = cookies();
   if (store.get("flowers_courier_auth")?.value !== "1") {
     return NextResponse.json(
-      { error: "????? ?????? ??????" },
+      { error: "נדרש זיהוי שליח" },
       { status: 401 },
     );
   }
@@ -26,13 +26,13 @@ export async function GET() {
       .order("created_at", { ascending: false });
     if (error) {
       return NextResponse.json(
-        { error: "????? ??????? ?????" },
+        { error: "שגיאה בטעינת הזמנות" },
         { status: 500 },
       );
     }
     return NextResponse.json({ orders: (data as Order[]) ?? [] });
   } catch (e) {
     console.error(e);
-    return NextResponse.json({ error: "????? ???" }, { status: 500 });
+    return NextResponse.json({ error: "שגיאת שרת" }, { status: 500 });
   }
 }

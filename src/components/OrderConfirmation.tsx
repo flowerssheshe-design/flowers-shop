@@ -42,17 +42,18 @@ export function OrderConfirmation({ order, bitNumber, payboxNumber, paymentMetho
     .join("\n");
 
   const msg = [
-    `הזמנה חדשה מ-${order.customer_name}`,
-    `טלפון: ${order.customer_phone}`,
-    "",
+    `שלום! ביצעתי הזמנה חדשה ב"לתת מהלב"`,
+    ``,
+    `*שם:* ${order.customer_name} (${order.customer_phone})`,
+    `*פריטים:*`,
     lines,
-    "",
-    `סה״כ: ${formatILS(order.total_amount)}`,
-    order.delivery_type === "delivery"
-      ? `משלוח ל: ${order.delivery_address ?? ""}`
-      : `איסוף עצמי - ${PICKUP_ADDRESS}`,
-    "",
-    "שילמתי בביט/פייבוקס ✅",
+    ``,
+    order.delivery_type === "delivery" 
+      ? `*משלוח:* ${order.delivery_address ?? ""}` 
+      : `*איסוף עצמי:* ${PICKUP_ADDRESS}`,
+    ``,
+    `*סה"כ:* *${formatILS(order.total_amount)}*`,
+    `שילמתי ב-${order.payment_method === 'bit' ? 'ביט' : 'פייבוקס'} / ממתין לאישור`,
   ].join("\n");
 
   const waLink = buildWhatsAppLink(WHATSAPP_NUMBER, msg);
@@ -66,9 +67,6 @@ export function OrderConfirmation({ order, bitNumber, payboxNumber, paymentMetho
         <h1 className="brand-serif text-2xl font-bold text-primary">
           תודה על ההזמנה!
         </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          פרחים לכבוד שבת קודש · מספר הזמנה: {order.id.slice(0, 8)}
-        </p>
       </div>
 
       <div className="rounded-xl border bg-card p-4 shadow-sm">
@@ -127,7 +125,7 @@ export function OrderConfirmation({ order, bitNumber, payboxNumber, paymentMetho
       {paymentMethod === "cash" && (
         <div className="rounded-xl border-2 border-emerald-200 bg-emerald-50 p-4 shadow-sm">
           <h2 className="mb-1 font-semibold text-emerald-800">תשלום במזומן</h2>
-          <p className="text-sm text-emerald-700">יש לשלם Upon pickup/arrival.</p>
+          <p className="text-sm text-emerald-700">יש לשלם בזמן איסוף ההזמנה.</p>
         </div>
       )}
       {paymentMethod === "paybox" && (

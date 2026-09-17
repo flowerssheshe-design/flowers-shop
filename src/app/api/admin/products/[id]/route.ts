@@ -101,11 +101,11 @@ export async function DELETE(
     const supabase = createAdminClient();
     const { error } = await supabase
       .from("products")
-      .update({ is_active: false })
+      .delete()
       .eq("id", id);
     if (error) {
       return NextResponse.json(
-        { error: "השבתת המוצר נכשלה" },
+        { error: "מחיקת המוצר נכשלה" },
         { status: 500 },
       );
     }

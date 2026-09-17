@@ -1,6 +1,6 @@
-"use client";
+﻿"use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   CheckCircle2,
@@ -18,6 +18,8 @@ import {
   Clock,
   MapPin,
   MessageSquare,
+  Zap,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,6 +46,7 @@ import {
   BUSINESS_PHONE,
   BUSINESS_EMAIL,
   BUSINESS_HOURS,
+  PICKUP_HOURS,
 } from "@/lib/constants";
 import {
   CLUB_DISCOUNT_THRESHOLD,
@@ -53,6 +56,8 @@ import {
   type Product,
   type SessionUser,
 } from "@/types";
+import { useStoreMode } from "@/context/StoreModeContext";
+import { createClient } from "@/lib/supabase/client";
 
 type Props = {
   products: Product[];
@@ -68,12 +73,15 @@ export function Storefront({
   completedOrderCount,
 }: Props) {
   const searchParams = useSearchParams();
+  const { mode, isLoading: storeModeLoading, isStallOpen } = useStoreMode();
   const [qty, setQty] = useState<Record<string, number>>({});
   const [cartOpen, setCartOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
   const [loginMode, setLoginMode] = useState<"login" | "register">("login");
   const [upsellOpen, setUpsellOpen] = useState(false);
   const [submittedOrder, setSubmittedOrder] = useState<Order | null>(null);
+  const [stockById, setStockById] = useState<Record<string, number>>({});
+  const [stockLoading, setStockLoading] = useState(true);
 
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [name, setName] = useState(user?.fullName ?? "");
@@ -85,6 +93,78 @@ export function Storefront({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<"bit" | "paybox" | "cash" | "">("");
   const [greetingNote, setGreetingNote] = useState("");
+
+  // Stall status toast state
+  const [showStallToast, setShowStallToast] = useState(false);
+  const [prevStallOpen, setPrevStallOpen] = useState(isStallOpen);
+  const isInitialLoadRef = useRef(true);
+
+  // Show toast when stall status changes (but not on initial load)
+  useEffect(() => {
+    if (isInitialLoadRef.current) {
+      isInitialLoadRef.current = false;
+      setPrevStallOpen(isStallOpen);
+      return;
+    }
+    if (!storeModeLoading && prevStallOpen !== isStallOpen) {
+      setShowStallToast(true);
+      setPrevStallOpen(isStallOpen);
+      // Auto-hide after 5 seconds
+      const timer = setTimeout(() => setShowStallToast(false), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [isStallOpen, storeModeLoading, prevStallOpen]);
+
+  // Fetch inventory for stock display in Live Sale mode
+  useEffect(() => {
+    async function fetchStock() {
+      try {
+        const res = await fetch("/api/inventory", { cache: "no-store" });
+        if (res.ok) {
+          const data = await res.json();
+          const stockMap: Record<string, number> = {};
+          (data.inventory ?? []).forEach((item: any) => {
+            stockMap[item.product_id] = item.live_stock_count ?? 0;
+          });
+          setStockById(stockMap);
+        }
+      } catch (e) {
+        console.error("Failed to fetch stock:", e);
+      } finally {
+        setStockLoading(false);
+      }
+    }
+    fetchStock();
+
+    // Supabase Realtime subscription for instant stock updates
+    if (mode === "realtime") {
+      const supabase = createClient();
+      const channel = supabase
+        .channel("inventory-changes")
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "inventory",
+          },
+          (payload) => {
+            const newRecord = payload.new as { product_id: string; live_stock_count: number } | null;
+            const oldRecord = payload.old as { product_id: string; live_stock_count: number } | null;
+            const productId = newRecord?.product_id ?? oldRecord?.product_id;
+            const stock = newRecord?.live_stock_count ?? 0;
+            if (productId) {
+              setStockById((prev) => ({ ...prev, [productId]: stock }));
+            }
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
+  }, [mode]);
 
   // Keep form in sync when user logs in/out
   useEffect(() => {
@@ -240,9 +320,11 @@ export function Storefront({
       {/* Hero */}
       <section className="border-b border-primary/10 bg-gradient-to-b from-cream/70 via-background to-background">
         <div className="container max-w-3xl py-10 text-center sm:py-14">
-          <h2 className="mb-4 brand-serif text-3xl font-bold leading-tight text-primary sm:text-4xl">
-            זרים וסידורי פרחים לכבוד שבת קודש
-          </h2>
+          <div className="mb-4 flex items-center justify-center gap-2">
+            <h2 className="brand-serif text-3xl font-bold leading-tight text-primary sm:text-4xl">
+              זרים וסידורי פרחים לכבוד שבת קודש
+            </h2>
+          </div>
           <p className="mx-auto mb-5 max-w-xl text-balance text-sm text-muted-foreground sm:text-base">
             בחרו את הזר המועדף, הזמינו מראש, ואנו נדאג להכין הכל ברביעי/חמישי לקראת
             שבת קודש. איסוף עצמי או משלוח עד הבית.
@@ -266,6 +348,7 @@ export function Storefront({
           qtyById={qty}
           onQtyChange={onQtyChange}
           qualifiesForMember={qualifiesForMember}
+          stockById={stockById}
         />
       </section>
 
@@ -279,7 +362,7 @@ export function Storefront({
 
 <div className="mt-8 space-y-6 text-sm leading-relaxed text-muted-foreground sm:text-base">
   <p>
-    היי, אנחנו <strong className="text-foreground">דרור ונווה</strong>.
+    היי, אנחנו <strong className="text-foreground">דרור ונוה</strong>.
   </p>
   <p>
     הכל התחיל ביום שישי אחד כשראינו כמה ההורים שלנו – משלמים על זר פרחים בסיסי לכבוד שבת. 
@@ -311,7 +394,7 @@ export function Storefront({
   
   <p className="font-semibold text-foreground pt-2">
     שתהיה שבת שלום! <br />
-    דרור & נווה
+    דרור & נוה
   </p>
 </div>
 
@@ -348,7 +431,7 @@ export function Storefront({
                 <li className="flex items-start gap-2">
                   <StoreIcon className="mt-0.5 h-4 w-4 text-primary/70" />
                   <span>
-                    איסוף זמין ביום שישי, 09:00-14:00
+                    איסוף זמין ביום שישי, {PICKUP_HOURS}
                   </span>
                 </li>
               </ul>
@@ -445,6 +528,45 @@ export function Storefront({
           setPaymentMethod={setPaymentMethod}
          />
        </Dialog>
+      {/* Stall Status Toast - Bottom */}
+      {showStallToast && !storeModeLoading && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 animate-slide-up" role="status" aria-live="polite">
+          <div
+            className={`inline-flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-medium shadow-lg backdrop-blur-sm border transition-all ${
+              isStallOpen
+                ? "bg-emerald-50/95 dark:bg-emerald-950/95 border-emerald-300/50 dark:border-emerald-700/50 text-emerald-800 dark:text-emerald-300"
+                : "bg-gray-50/95 dark:bg-gray-950/95 border-gray-300/50 dark:border-gray-700/50 text-gray-700 dark:text-gray-300"
+            }`}
+          >
+            <span className="text-lg" aria-hidden="true">{isStallOpen ? "🏪" : "🔒"}</span>
+            <span>
+              {isStallOpen ? "הדוכן נפתח! בואו לבקר" : "הדוכן נסגר — הזמנות מראש בלבד"}
+            </span>
+            <button
+              onClick={() => setShowStallToast(false)}
+              className="ml-2 p-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 transition"
+              aria-label="סגור"
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+      )}
+      <style jsx>{`
+        @keyframes slide-up {
+          from {
+            opacity: 0;
+            transform: translate(-50%, 100%);
+          }
+          to {
+            opacity: 1;
+            transform: translate(-50%, 0);
+          }
+        }
+        .animate-slide-up {
+          animation: slide-up 0.3s ease-out forwards;
+        }
+      `}</style>
     </main>
   );
 }
@@ -518,7 +640,7 @@ function CartDrawer({
                 <strong className="text-foreground">לתשומת ליבכם:</strong> הזמנות
                 עם איסוף עצמי יתאספו בכתובת {" "}
                 <span className="font-medium text-foreground">{PICKUP_ADDRESS}</span>.
-                זמני איסוף: שישי 09:00-14:00.
+                זמני איסוף: שישי 10:00-15:00.
               </div>
             )}
 
@@ -712,7 +834,7 @@ function CheckoutDialog(props: CheckoutDialogProps) {
               id="co-notes"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="כרטיס ברכה, העדפות צבעים…"
+              placeholder="העדפות צבעים וכולי…"
               rows={2}
             />
   ﻿        </div>
@@ -729,7 +851,7 @@ function CheckoutDialog(props: CheckoutDialogProps) {
             disabled
             className='flex items-center justify-between rounded-xl border border-primary/15 bg-muted p-3 text-sm text-muted-foreground opacity-70'
           >
-            <span>כרטיס ברכה, מכתב לזר</span>
+            <span>   כרטיס ברכה, מכתב לזר</span>
             <span className='text-xs'>בקרוב</span>
           </button>
         </div>

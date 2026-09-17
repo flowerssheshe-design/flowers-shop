@@ -218,8 +218,9 @@ export function LoginDialog({
 
             <p className="text-center text-xs text-muted-foreground">
               {mode === "login"
-                ? "אין לכם חשבון? עברו להרשמה וקבלו מעקב הזמנות והנחת קונה קבוע אחרי {CLUB_DISCOUNT_THRESHOLD} הזמנות."
-                : "בהרשמה תקבלו גישה לפרטי החשבון ומעקב הזמנות."}
+                ? `אין לכם חשבון? עברו להרשמה וקבלו מעקב הזמנות והנחת קונה קבוע אחרי ${CLUB_DISCOUNT_THRESHOLD} הזמנות.`
+                : "בהרשמה תקבלו גישה לפרטי החשבון ומעקב הזמנות."
+              }
             </p>
           </form>
         </div>

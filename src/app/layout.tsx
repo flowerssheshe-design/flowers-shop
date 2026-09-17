@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { ToastProvider } from "@/components/ui/toaster";
 import { VisitTracker } from "@/components/VisitTracker";
+import { StoreModeProvider } from "@/context/StoreModeContext";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -25,7 +26,9 @@ export default function RootLayout({
     <html lang="he" dir="rtl" suppressHydrationWarning>
       <body className="min-h-screen bg-background font-sans">
         <VisitTracker />
-        <ToastProvider>{children}</ToastProvider>
+        <StoreModeProvider>
+          <ToastProvider>{children}</ToastProvider>
+        </StoreModeProvider>
       </body>
     </html>
   );

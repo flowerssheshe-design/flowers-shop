@@ -1,7 +1,8 @@
 ﻿"use client";
 
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import { Minus, Plus, ShoppingBag } from "lucide-react";
+import { ChevronDown, ChevronUp, Minus, Plus, ShoppingBag, Store, Truck, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatILS } from "@/lib/utils";
 import {
@@ -10,18 +11,20 @@ import {
   type Product,
 } from "@/types";
 import { isPreorderPhase } from "@/lib/cycleTime";
+import { useStoreMode } from "@/context/StoreModeContext";
 
 type Props = {
   product: Product;
   qty: number;
   onChange: (qty: number) => void;
   qualifiesForMember: boolean;
+  stock?: number;
 };
 
 const FALLBACK =
   "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 300'><rect width='400' height='300' fill='%23f3f4f6'/><text x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%239ca3af' font-family='Heebo,sans-serif' font-size='24'>פרחים</text></svg>";
 
-export function ProductCard({ product, qty, onChange, qualifiesForMember }: Props) {
+export function ProductCard({ product, qty, onChange, qualifiesForMember, stock = 0 }: Props) {
   const hasMemberPrice =
     product.price_member > 0 && product.price_member < product.price_standard;
   const showMemberPrice = qualifiesForMember && hasMemberPrice;
@@ -34,6 +37,22 @@ export function ProductCard({ product, qty, onChange, qualifiesForMember }: Prop
     : 0;
 
   const inPreorder = isPreorderPhase();
+  const { mode } = useStoreMode();
+  const isRealtimeMode = mode === "realtime";
+  const isOutOfStock = isRealtimeMode && stock <= 0;
+
+  const [expanded, setExpanded] = useState(false);
+  const descRef = useRef<HTMLParagraphElement>(null);
+  const [isClamped, setIsClamped] = useState(false);
+
+  useEffect(() => {
+    const el = descRef.current;
+    if (!el) {
+      setIsClamped(false);
+      return;
+    }
+    setIsClamped(el.scrollHeight > el.clientHeight);
+  }, [product.description]);
 
   return (
     <article className="group flex flex-col overflow-hidden rounded-2xl border border-primary/10 bg-card shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">
@@ -56,6 +75,18 @@ export function ProductCard({ product, qty, onChange, qualifiesForMember }: Prop
             unoptimized
           />
         )}
+
+        
+
+        {/* Out of Stock Overlay */}
+        {isOutOfStock && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-sm rounded-2xl">
+            <div className="inline-flex items-center gap-2 rounded-full bg-background/95 px-4 py-2 text-center shadow-lg">
+              <X className="h-5 w-5 text-destructive" aria-hidden="true" />
+              <span className="text-sm font-semibold text-foreground">אזל מהמלאי</span>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="flex flex-1 flex-col gap-3 p-5">
@@ -64,9 +95,38 @@ export function ProductCard({ product, qty, onChange, qualifiesForMember }: Prop
             {product.title}
           </h3>
           {product.description ? (
-            <p className="line-clamp-2 text-sm text-muted-foreground">
-              {product.description}
-            </p>
+            <>
+              <p
+                ref={descRef}
+                className={
+                  expanded
+                    ? "text-sm text-muted-foreground"
+                    : "line-clamp-2 text-sm text-muted-foreground"
+                }
+              >
+                {product.description}
+              </p>
+              {isClamped ? (
+                <button
+                  type="button"
+                  onClick={() => setExpanded((v) => !v)}
+                  aria-expanded={expanded}
+                  className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:text-primary/80"
+                >
+                  {expanded ? (
+                    <>
+                      <ChevronUp className="h-3 w-3" />
+                      הסתר תיאור
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDown className="h-3 w-3" />
+                      הרחב תיאור
+                    </>
+                  )}
+                </button>
+              ) : null}
+            </>
           ) : null}
         </div>
 
@@ -117,9 +177,18 @@ export function ProductCard({ product, qty, onChange, qualifiesForMember }: Prop
 
         <div className="mt-auto pt-1">
           {qty === 0 ? (
-            <Button variant="default" className="w-full rounded-full shadow-sm" onClick={() => onChange(1)}>
+            <Button
+              variant={isOutOfStock ? "outline" : "default"}
+              className="w-full rounded-full shadow-sm"
+              onClick={() => !isOutOfStock && onChange(1)}
+              disabled={isOutOfStock}
+            >
               <ShoppingBag className="h-4 w-4" />
-              {inPreorder ? "הזמנה מראש" : "הזמנה"}
+              {isOutOfStock
+                ? "אזל המלאי"
+                : isRealtimeMode
+                ? "הוסף לסל"
+                : "הזמנה מראש"}
             </Button>
           ) : (
             <div className="flex items-center justify-between rounded-full border border-primary/20 bg-primary/5 px-2 py-1">
@@ -129,6 +198,7 @@ export function ProductCard({ product, qty, onChange, qualifiesForMember }: Prop
                 className="h-8 w-8 rounded-full"
                 onClick={() => onChange(qty + 1)}
                 aria-label="הוסף עוד אחד"
+                disabled={isOutOfStock}
               >
                 <Plus className="h-4 w-4" />
               </Button>

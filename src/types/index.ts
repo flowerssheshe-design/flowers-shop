@@ -151,11 +151,12 @@ export type WeeklyArchive = {
   preorders_count: number;
   preorders_revenue: number;
   preorders_profit: number;
-  stall_sales_count: number;
-  stall_revenue: number;
-  stall_profit: number;
-  total_supplier_cost: number;
-  total_net_profit: number;
+   stall_sales_count: number;
+   stall_revenue: number;
+   stall_profit: number;
+   total_supplier_cost: number;
+   total_expenses?: number;
+   total_net_profit: number;
   top_products: TopProduct[];
   product_sales: TopProduct[];
   snapshot_data: Record<string, unknown>;
@@ -169,4 +170,75 @@ export type Inventory = {
   initial_stock_count: number;
   reserved_orders: number;
   updated_at: string;
+};
+
+export type Expense = {
+  id: string;
+  description: string;
+  amount: number;
+  category: string;
+  expense_type: 'one_time' | 'recurring';
+  created_at: string;
+};
+
+export type ExpensesSummary = {
+  total_one_time: number;
+  total_recurring: number;
+  total_all: number;
+};
+
+export type AllTimeMetrics = {
+  cumulative_gross_profit: number;
+  total_expenses: number;
+  true_net_profit: number;
+};
+
+export type WoWGrowth = {
+  curr_revenue: number;
+  prev_revenue: number;
+  revenue_wow_pct: number | null;
+  curr_gross_profit: number;
+  prev_gross_profit: number;
+  profit_wow_pct: number | null;
+  curr_orders_count: number;
+  prev_orders_count: number;
+  orders_wow_pct: number | null;
+};
+
+export type BestSeller = {
+  product_id: string;
+  title: string;
+  total_units: number;
+  total_revenue: number;
+  total_profit: number;
+};
+
+export type SellThrough = {
+  product_id: string;
+  title: string;
+  total_sold: number;
+  initial_stock: number;
+  sell_through_pct: number;
+};
+
+export type InvestmentEfficiency = {
+  avg_weekly_investment: number;
+  avg_weekly_net_profit: number;
+  avg_return_ratio: number;
+  cycle_count: number;
+};
+
+export type CustomerSegments = {
+  regular_customers: number;
+  loyal_customers: number;
+};
+
+export type StatsPayloadExtended = {
+  weekStart: string;
+  weekEnd: string;
+  allTimeMetrics: AllTimeMetrics;
+  bestSellerPreorders: BestSeller | null;
+  bestSellerStallSales: BestSeller | null;
+  highestSellThrough: SellThrough | null;
+  customerSegments: CustomerSegments;
 };
