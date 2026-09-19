@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Phone, MapPin, Package, LogOut, RefreshCw } from "lucide-react";
+import { Phone, MapPin, Package, LogOut, RefreshCw, StickyNote } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { buildWhatsAppLink, normalizeWhatsAppRecipient } from "@/lib/utils";
 import type { Order } from "@/types";
@@ -127,13 +127,16 @@ export default function CourierPage() {
                           )}
                         </div>
                       </div>
-                    </div>
+</div>
 
                     {order.delivery_address && (
-                      <div className="flex items-start gap-2 text-sm text-muted-foreground">
+                      <a
+                        href={`geo:0,0?q=${encodeURIComponent(order.delivery_address)}`}
+                        className="flex items-start gap-2 text-sm text-muted-foreground hover:text-primary hover:underline"
+                      >
                         <MapPin className="mt-0.5 h-4 w-4 shrink-0" />
                         <span>{order.delivery_address}</span>
-                      </div>
+                      </a>
                     )}
 
                     <div className="space-y-1">
@@ -150,10 +153,27 @@ export default function CourierPage() {
                       </ul>
                     </div>
 
+                    {order.notes && (
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 text-sm font-medium">
+                          <StickyNote className="h-4 w-4" />
+                          <span>הערות:</span>
+                        </div>
+                        <p className="mr-6 text-sm text-muted-foreground">
+                          {order.notes}
+                        </p>
+                      </div>
+                    )}
+
                     {order.greeting_note && (
-                      <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-                        <span className="font-medium">הערת ברכה: </span>
-                        {order.greeting_note}
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 text-sm font-medium">
+                          <StickyNote className="h-4 w-4" />
+                          <span>הremarks בברכה:</span>
+                        </div>
+                        <p className="mr-6 text-sm text-muted-foreground">
+                          {order.greeting_note}
+                        </p>
                       </div>
                     )}
 

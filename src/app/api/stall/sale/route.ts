@@ -13,6 +13,7 @@ const SaleSchema = z.object({
   product_id: z.string().uuid(),
   qty: z.number().int().min(1),
   payment_method: z.enum(["cash", "bit"]),
+  custom_price: z.number().min(0).max(100000).optional(),
 });
 
 export async function POST(req: Request) {
@@ -48,7 +49,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const { product_id, qty, payment_method } = parsed.data;
+  const { product_id, qty, payment_method, custom_price } = parsed.data;
 
   try {
     const admin = createAdminClient();
@@ -66,54 +67,15 @@ export async function POST(req: Request) {
       );
     }
 
-    // Check current stock for better error messages
-    const { data: currentStock, error: stockErr } = await admin
-      .from("inventory")
-      .select("live_stock_count")
-      .eq("product_id", product_id)
-      .single();
+    const unitPrice = custom_price ?? product.price_standard;
 
-    if (stockErr || currentStock === null) {
-      return NextResponse.json(
-        { error: "מוצר לא נמצא במלאי" },
-        { status: 404 },
-      );
-    }
-
-    const available = currentStock.live_stock_count ?? 0;
-
-    if (available <= 0) {
-      return NextResponse.json(
-        { error: "המלאי נגמר" },
-        { status: 409 },
-      );
-    }
-
-    if (qty > available) {
-      return NextResponse.json(
-        { error: `הכמות המבוקשת (${qty}) גדולה מהמלאי הזמין (${available})` },
-        { status: 409 },
-      );
-    }
-
-    // Atomic check-and-decrement; returns NULL when stock is insufficient.
-    const { data: after, error: decErr } = await admin.rpc("decrement_inventory", {
-      p_product_id: product_id,
-      p_qty: qty,
-    });
-    if (decErr || after === null || after === undefined) {
-      return NextResponse.json(
-        { error: "אין מספיק מלאי לביצוע המכירה" },
-        { status: 409 },
-      );
-    }
-
+    // Step 1: Create the order first (without deducting stock).
     const orderItems = [
       {
         productId: product.id,
         title: product.title,
         qty,
-        price: product.price_standard,
+        price: unitPrice,
         image_url: product.image_url,
       },
     ];
@@ -125,15 +87,17 @@ export async function POST(req: Request) {
         customer_phone: "",
         delivery_address: null,
         items: orderItems,
-        total_amount: product.price_standard * qty,
+        total_amount: unitPrice * qty,
         delivery_type: "pickup",
         delivery_fee: 0,
         is_member: false,
-        notes: "מכירה בדוכן",
+        notes: custom_price
+          ? `מכירה בדוכן - מחיר יחידני: ${custom_price} ₪`
+          : "מכירה בדוכן",
         status: "approved",
         fulfillment_type: "pickup",
         payment_method,
-        inventory_deducted: true,
+        inventory_deducted: false,
       })
       .select("*")
       .single();
@@ -145,7 +109,27 @@ export async function POST(req: Request) {
       );
     }
 
-    return NextResponse.json({ order }, { status: 201 });
+    // Step 2: Atomically decrement stock. If insufficient stock, roll back the order.
+    const { data: after, error: decErr } = await admin.rpc("decrement_inventory", {
+      p_product_id: product_id,
+      p_qty: qty,
+    });
+
+    if (decErr || after === null || after === undefined) {
+      await admin.from("orders").delete().eq("id", order.id);
+      return NextResponse.json(
+        { error: "אין מספיק מלאי במכוונת לביצוע המכירה" },
+        { status: 409 },
+      );
+    }
+
+    // Step 3: Mark the order as having inventory deducted.
+    await admin
+      .from("orders")
+      .update({ inventory_deducted: true })
+      .eq("id", order.id);
+
+    return NextResponse.json({ order, remaining: after }, { status: 201 });
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: "שגיאת שרת" }, { status: 500 });

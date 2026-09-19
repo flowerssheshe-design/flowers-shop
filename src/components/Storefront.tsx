@@ -82,6 +82,7 @@ export function Storefront({
   const [submittedOrder, setSubmittedOrder] = useState<Order | null>(null);
   const [stockById, setStockById] = useState<Record<string, number>>({});
   const [stockLoading, setStockLoading] = useState(true);
+  const [liveProducts, setLiveProducts] = useState<Product[]>(products);
 
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [name, setName] = useState(user?.fullName ?? "");
@@ -123,10 +124,23 @@ export function Storefront({
         if (res.ok) {
           const data = await res.json();
           const stockMap: Record<string, number> = {};
-          (data.inventory ?? []).forEach((item: any) => {
-            stockMap[item.product_id] = item.live_stock_count ?? 0;
-          });
-          setStockById(stockMap);
+           const availability: Record<string, boolean> = {};
+           (data.inventory ?? []).forEach((item: any) => {
+             const stock = item.live_stock_count ?? 0;
+             stockMap[item.product_id] = stock;
+             availability[item.product_id] = stock > 0;
+           });
+           setStockById(stockMap);
+           // Reflect live inventory into product availability so that when
+           // an admin cancels/deletes an order and stock is restored, the
+           // product becomes purchasable again immediately.
+           setLiveProducts((prev) =>
+             prev.map((p) =>
+               availability[p.id] !== undefined
+                 ? { ...p, is_available: availability[p.id] }
+                 : p,
+             ),
+           );
         }
       } catch (e) {
         console.error("Failed to fetch stock:", e);
@@ -136,10 +150,19 @@ export function Storefront({
     }
     fetchStock();
 
-    // Supabase Realtime subscription for instant stock updates
+    // Realtime subscription + polling fallback for instant and reliable stock updates
+    let supabase: ReturnType<typeof createClient> | null = null;
+    let channel: ReturnType<
+      ReturnType<typeof createClient>["channel"]
+    > | null = null;
+
+    // Polling fallback: always refresh stock every 5 seconds (even before
+    // mode loads or if Supabase realtime is unavailable)
+    const pollInterval = setInterval(fetchStock, 5000);
+
     if (mode === "realtime") {
-      const supabase = createClient();
-      const channel = supabase
+      supabase = createClient();
+      channel = supabase
         .channel("inventory-changes")
         .on(
           "postgres_changes",
@@ -153,17 +176,29 @@ export function Storefront({
             const oldRecord = payload.old as { product_id: string; live_stock_count: number } | null;
             const productId = newRecord?.product_id ?? oldRecord?.product_id;
             const stock = newRecord?.live_stock_count ?? 0;
-            if (productId) {
+             if (productId) {
               setStockById((prev) => ({ ...prev, [productId]: stock }));
+              // Update product availability in real-time so the product list
+              // reflects stock changes from order creation/deletion/cancellation.
+              setLiveProducts((prev) =>
+                prev.map((p) =>
+                  p.id === productId
+                    ? { ...p, is_available: stock > 0 }
+                    : p,
+                ),
+              );
             }
           }
         )
         .subscribe();
-
-      return () => {
-        supabase.removeChannel(channel);
-      };
     }
+
+    return () => {
+      if (channel && supabase) {
+        supabase.removeChannel(channel);
+      }
+      clearInterval(pollInterval);
+    };
   }, [mode]);
 
   // Keep form in sync when user logs in/out
@@ -174,6 +209,12 @@ export function Storefront({
       setAddress((v) => (v ? v : user.address ?? ""));
     }
   }, [user]);
+
+  // Sync liveProducts when the server-rendered products prop changes.
+  // This handles cases like a full page reload after server-side updates.
+  useEffect(() => {
+    setLiveProducts(products);
+  }, [products]);
 
   // If user navigates back to the storefront (e.g. via ?reset=1 or browser back),
   // clear the submitted-order lock so they can shop again.
@@ -236,11 +277,22 @@ export function Storefront({
     (deliveryType === "pickup" || address.trim().length >= 4) &&
     paymentMethod !== "";
 
-  async function submitOrder() {
+   async function submitOrder() {
     if (!canSubmit || submitting) return;
     setSubmitting(true);
     setSubmitError(null);
     try {
+      // Validate stock availability before submitting in realtime mode
+      if (mode === "realtime" && !stockLoading) {
+        const insufficientItems = cartItems.filter(
+          (item) => (stockById[item.productId] ?? 0) < item.qty,
+        );
+        if (insufficientItems.length > 0) {
+          throw new Error(
+            `המוצר "${insufficientItems[0].title}" אזל מהמלאי`,
+          );
+        }
+      }
       const res = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -261,8 +313,9 @@ export function Storefront({
         }),
       });
       if (!res.ok) {
-        const t = await res.text();
-        throw new Error(t || "שגיאה בשליחת ההזמנה");
+        const errData = await res.json().catch(() => ({}));
+        const apiMsg = (errData as { error?: string }).error;
+        throw new Error(apiMsg || "שגיאה בשליחת ההזמנה");
       }
       const data = (await res.json()) as { order: Order };
       setSubmittedOrder(data.order);
@@ -344,7 +397,7 @@ export function Storefront({
           </p>
         </div>
         <ProductGrid
-          products={products}
+          products={liveProducts}
           qtyById={qty}
           onQtyChange={onQtyChange}
           qualifiesForMember={qualifiesForMember}
@@ -636,12 +689,14 @@ function CartDrawer({
             </ul>
 
             {deliveryType === "pickup" && (
-              <div className="mt-3 rounded-lg border border-primary/15 bg-primary/5 p-3 text-xs text-muted-foreground">
-                <strong className="text-foreground">לתשומת ליבכם:</strong> הזמנות
-                עם איסוף עצמי יתאספו בכתובת {" "}
-                <span className="font-medium text-foreground">{PICKUP_ADDRESS}</span>.
-                זמני איסוף: שישי 10:00-15:00.
-              </div>
+                <div className="mt-3 rounded-lg border border-primary/15 bg-primary/5 p-3 text-xs text-muted-foreground">
+                  <strong className="text-foreground">לתשומת ליבכם:</strong> הזמנות
+                  עם איסוף עצמי יתאספו בכתובת {" "}
+                  <span className="font-medium text-foreground">{PICKUP_ADDRESS}</span>.
+                  זמני איסוף: שישי 10:00-15:00.
+                  <br />
+                  <span className="font-medium text-foreground">משלוח עד הבית בשישי:</span> זמין בתחומי ירוחם בלבד.
+                </div>
             )}
 
             <div className="mt-4 space-y-2 rounded-xl border border-primary/10 bg-cream/60 p-3 text-sm">

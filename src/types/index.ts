@@ -13,7 +13,9 @@ export type Product = {
   price_member: number;
   cost_price: number;
   image_url: string | null;
+  image_urls: string[];
   is_active: boolean;
+  is_available?: boolean;
   sort_order: number;
   created_at: string;
   updated_at: string;

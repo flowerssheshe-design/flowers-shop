@@ -20,6 +20,7 @@ import { Switch } from "@/components/ui/switch";
 import { SiteHeader } from "@/components/SiteHeader";
 import { formatILS } from "@/lib/utils";
 import { CLUB_DISCOUNT_THRESHOLD, type Order, type SessionUser } from "@/types";
+import { BUSINESS_PHONE } from "@/lib/constants";
 
 type Props = {
   user: SessionUser;
@@ -369,6 +370,8 @@ export function ProfileView({
                     <th className="px-2 py-2 text-start">סוג</th>
                     <th className="px-2 py-2 text-start">סה״כ</th>
                     <th className="px-2 py-2 text-start">סטטוס</th>
+                    <th className="px-2 py-2 text-start">הערות</th>
+                    <th className="px-2 py-2 text-start">שיטת תשלום</th>
                     <th className="px-2 py-2 text-start">פעולות</th>
                   </tr>
                 </thead>
@@ -414,37 +417,59 @@ export function ProfileView({
                             </span>
                           ) : null}
                         </td>
-                        <td className="px-2 py-3">
-                          <span
-                            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs ${
-                              STATUS_COLOR[o.status]
-                            }`}
-                          >
-                            {o.status === "completed" ? (
-                              <CheckCircle2 className="h-3 w-3" />
-                            ) : null}
-                             {STATUS_LABEL[o.status]}
-                           </span>
+                          <td className="px-2 py-3">
+                           <span
+                             className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs ${
+                               STATUS_COLOR[o.status]
+                             }`}
+                           >
+                             {o.status === "completed" ? (
+                               <CheckCircle2 className="h-3 w-3" />
+                             ) : null}
+                              {STATUS_LABEL[o.status]}
+                            </span>
                          </td>
                          <td className="px-2 py-3">
-                            {["pending_payment", "approved"].includes(o.status) ? (
-                             <Button
-                               variant="ghost"
-                               size="sm"
-                               className="h-7 px-2 text-xs"
-                               onClick={() => cancelOrder(o)}
-                               disabled={cancelingOrderId === o.id}
-                               aria-label={`בטל הזמנה ${o.id}`}
-                             >
-                               {cancelingOrderId === o.id ? (
-                                 <Loader2 className="h-3 w-3 animate-spin" />
-                               ) : (
-                                 <Trash2 className="h-3 w-3 text-destructive" />
-                               )}
-                               בטל
-                             </Button>
-                           ) : null}
+                           {o.notes ? (
+                             <p className="max-w-[140px] cursor-help text-xs text-muted-foreground" title={o.notes}>
+                               {o.notes}
+                             </p>
+                           ) : (
+                             <span className="text-xs text-muted-foreground">—</span>
+                           )}
                          </td>
+                         <td className="px-2 py-3 text-xs">
+                           {o.payment_method ? (
+                             <span className="inline-flex items-center gap-1 rounded-full border border-primary/10 bg-primary/5 px-2 py-0.5 font-medium">
+                               {o.payment_method === "bit" ? "ביט" : o.payment_method === "paybox" ? "PayBox" : "מזומן"}
+                             </span>
+                           ) : (
+                             <span className="text-xs text-muted-foreground">—</span>
+                           )}
+                         </td>
+                          <td className="px-2 py-3">
+                             {o.status === "approved" ? (
+                              <p className="text-xs text-muted-foreground">
+                                על מנת לדבר עם מספר טלפון {BUSINESS_PHONE}
+                              </p>
+                            ) : o.status === "pending_payment" ? (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2 text-xs"
+                                onClick={() => cancelOrder(o)}
+                                disabled={cancelingOrderId === o.id}
+                                aria-label={`בטל הזמנה ${o.id}`}
+                              >
+                                {cancelingOrderId === o.id ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-3 w-3 text-destructive" />
+                                )}
+                                בטל
+                              </Button>
+                            ) : null}
+                          </td>
                        </tr>
                     );
                   })}

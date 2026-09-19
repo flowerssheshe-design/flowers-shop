@@ -57,36 +57,9 @@ export async function POST(req: Request) {
   try {
     const admin = createAdminClient();
 
-    // First check current stock to give a better error message
-    const { data: currentStock, error: stockErr } = await admin
-      .from("inventory")
-      .select("live_stock_count")
-      .eq("product_id", product_id)
-      .single();
-
-    if (stockErr || currentStock === null) {
-      return NextResponse.json(
-        { error: "מוצר לא נמצא במלאי" },
-        { status: 404 },
-      );
-    }
-
-    const available = currentStock.live_stock_count ?? 0;
-
-    if (available <= 0) {
-      return NextResponse.json(
-        { error: "המלאי נגמר" },
-        { status: 409 },
-      );
-    }
-
-    if (qty > available) {
-      return NextResponse.json(
-        { error: `הכמות המבוקשת (${qty}) גדולה מהמלאי הזמין (${available})` },
-        { status: 409 },
-      );
-    }
-
+    // Rely strictly on the atomic RPC function for stock deduction.
+    // The decrement_inventory function returns NULL when stock is insufficient,
+    // which prevents race conditions between concurrent stall sales.
     const { data: after, error: decErr } = await admin.rpc("decrement_inventory", {
       p_product_id: product_id,
       p_qty: qty,
@@ -94,7 +67,7 @@ export async function POST(req: Request) {
 
     if (decErr || after === null || after === undefined) {
       return NextResponse.json(
-        { error: "אין מספיק מלאי לביצוע הקיזוז" },
+        { error: "אין מספיק מלאי במכוונת לבצע את הקיזוז" },
         { status: 409 },
       );
     }

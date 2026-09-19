@@ -74,7 +74,7 @@ export async function POST(req: Request) {
     status = "approved";
   }
 
-let qualifies = false;
+  let qualifies = false;
   if (user) {
     try {
       const admin = createAdminClient();
@@ -87,26 +87,11 @@ let qualifies = false;
     }
   }
 
-  let inventoryDeducted = false;
-  const storeMode = await getStoreMode();
-  if (isRealtimeMode(storeMode) && body.items.length > 0) {
-    const admin = createAdminClient();
-    for (const item of body.items) {
-      // Atomic check-and-decrement; returns NULL when stock is insufficient.
-      const { data: after, error: decErr } = await admin.rpc("decrement_inventory", {
-        p_product_id: item.productId,
-        p_qty: item.qty,
-      });
-      if (decErr || after === null || after === undefined) {
-        return NextResponse.json(
-          { error: `המוצר "${item.title}" אזל מהמלאי` },
-          { status: 409 },
-        );
-      }
-      inventoryDeducted = true;
-    }
-  }
-
+  // Step 1: Create the order first (without deducting stock).
+  // Stock is only deducted for orders that are already confirmed (approved),
+  // i.e. cash pickup orders. For pending_payment (bit/paybox), stock is
+  // deducted later when the admin confirms payment (status → approved).
+  let orderData: Order;
   try {
     const admin = createAdminClient();
     const { data, error } = await admin
@@ -126,7 +111,7 @@ let qualifies = false;
         fulfillment_type: body.fulfillment_type ?? body.delivery_type,
         payment_method: body.payment_method ?? null,
         greeting_note: body.greeting_note ?? null,
-        inventory_deducted: inventoryDeducted,
+        inventory_deducted: false,
       })
       .select("*")
       .single();
@@ -138,26 +123,7 @@ let qualifies = false;
         { status: 500 },
       );
     }
-
-    if (user) {
-      try {
-        await admin
-          .from("profiles")
-          .update({
-            full_name: body.customer_name,
-            phone: body.customer_phone,
-            address:
-              body.delivery_type === "delivery"
-                ? body.delivery_address ?? null
-                : undefined,
-          })
-          .eq("id", user.id);
-      } catch {
-        // non-fatal
-      }
-    }
-
-    return NextResponse.json({ order: data }, { status: 201 });
+    orderData = data as Order;
   } catch (e) {
     console.error(e);
     return NextResponse.json(
@@ -165,4 +131,65 @@ let qualifies = false;
       { status: 500 },
     );
   }
+
+  // Step 2: Deduct stock at creation for all orders in realtime mode.
+  // This reserves the stock immediately (prevents overselling) and ensures
+  // the stall staff see reduced stock right away.
+  // In pre-order mode, stock is not tracked — no deduction.
+  const storeMode = await getStoreMode();
+  const isRealtime = isRealtimeMode(storeMode);
+  const shouldDeductAtCreation =
+    isRealtime && body.items.length > 0;
+
+  if (shouldDeductAtCreation) {
+    const admin = createAdminClient();
+    const deductedItems: { productId: string; qty: number }[] = [];
+    for (const item of body.items) {
+      const { data: after, error: decErr } = await admin.rpc("decrement_inventory", {
+        p_product_id: item.productId,
+        p_qty: item.qty,
+      });
+      if (decErr || after === null || after === undefined) {
+        for (const di of deductedItems) {
+          await admin.rpc("increment_inventory", {
+            p_product_id: di.productId,
+            p_qty: di.qty,
+          });
+        }
+        await admin.from("orders").delete().eq("id", orderData.id);
+        return NextResponse.json(
+          { error: `המוצר "${item.title}" אזל מהמלאי` },
+          { status: 409 },
+        );
+      }
+      deductedItems.push({ productId: item.productId, qty: item.qty });
+    }
+    await admin
+      .from("orders")
+      .update({ inventory_deducted: true })
+      .eq("id", orderData.id);
+    orderData.inventory_deducted = true;
+  }
+
+  // Step 3: Update user profile (non-fatal)
+  if (user) {
+    try {
+      const admin = createAdminClient();
+      await admin
+        .from("profiles")
+        .update({
+          full_name: body.customer_name,
+          phone: body.customer_phone,
+          address:
+            body.delivery_type === "delivery"
+              ? body.delivery_address ?? null
+              : undefined,
+        })
+        .eq("id", user.id);
+    } catch {
+      // non-fatal
+    }
+  }
+
+  return NextResponse.json({ order: orderData }, { status: 201 });
 }

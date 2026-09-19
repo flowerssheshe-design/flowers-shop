@@ -95,22 +95,28 @@ export async function POST() {
       }));
     }
 
-    // --- Per-product pre-order units (to subtract from inventory-based stall sales) ---
-    const preOrderUnitsById = new Map<string, number>();
+    // --- Per-product live order units taken from stall inventory ---
+    // Only orders placed in live/realtime mode actually deplete the physical stall
+    // inventory (inventory_deducted=true). Pre-orders placed in preorder mode must
+    // NOT affect the stall's cost base, so they are excluded here. The supplier cost
+    // of these live online orders is still attributed to the "הזמנות מראש" block
+    // separately (see preordersSupplierCost below), avoiding any double counting.
+    const liveOrderUnitsById = new Map<string, number>();
     const activeOrdersForUnits = orders.filter((o) => o.status === "approved" || o.status === "completed");
     for (const order of activeOrdersForUnits) {
-      // Only count actual pre-orders (real customer phone) toward pre-order stats.
+      // Only count actual online orders (real customer phone) toward pre-order stats.
       // Stall sales (empty customer_phone) are tracked via inventory deductions only.
       if (!order.customer_phone || order.customer_phone.trim() === '') continue;
+      if (order.inventory_deducted !== true) continue;
       const items = extractItems(order);
       for (const item of items) {
         const pid = item.product_id;
-        preOrderUnitsById.set(pid, (preOrderUnitsById.get(pid) ?? 0) + item.qty);
+        liveOrderUnitsById.set(pid, (liveOrderUnitsById.get(pid) ?? 0) + item.qty);
       }
     }
 
     // --- Per-product stall inventory breakdown (from inventory snapshot) ---
-    // Subtract pre-order units from inventory-based sales to avoid double-counting
+    // Subtract live online order units from inventory-based sales to avoid double-counting
     // in Live Sale mode (online orders also deduct live_stock_count).
     const invMap = new Map<string, { live: number; initial: number }>();
     for (const row of inventoryRows ?? []) {
@@ -124,8 +130,8 @@ export async function POST() {
       const initialStock = Math.max(0, inv.initial);
       const liveStock = Math.max(0, inv.live);
       const inventoryBasedSold = Math.max(0, initialStock - liveStock);
-      const preOrderUnits = preOrderUnitsById.get(String(p.id)) ?? 0;
-      const unitsSold = Math.max(0, inventoryBasedSold - preOrderUnits);
+      const liveUnitsTaken = liveOrderUnitsById.get(String(p.id)) ?? 0;
+      const unitsSold = Math.max(0, inventoryBasedSold - liveUnitsTaken);
       const sellThrough = initialStock > 0 ? (unitsSold / initialStock) * 100 : 0;
       const revenue = unitsSold * Number(p.price_standard || 0);
       const profit = unitsSold * Math.max(0, Number(p.price_standard || 0) - Number(p.cost_price || 0));

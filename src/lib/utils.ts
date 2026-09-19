@@ -43,6 +43,25 @@ export function buildWhatsAppLink(
   return `https://wa.me/${cleaned}?text=${encodeURIComponent(message)}`;
 }
 
+export function buildBitLink(
+  phone: string,
+  amount: number,
+  note: string,
+): string {
+  const cleaned = phone.replace(/\D/g, "");
+  const normalized = cleaned.startsWith("972")
+    ? cleaned
+    : cleaned.startsWith("0")
+      ? "972" + cleaned.slice(1)
+      : cleaned;
+  const params = new URLSearchParams({
+    phone: normalized,
+    amount: amount.toFixed(2),
+    note,
+  });
+  return `bit://pay?${params.toString()}`;
+}
+
 export function normalizeWhatsAppRecipient(
   phone: string | null | undefined,
 ): string | null {

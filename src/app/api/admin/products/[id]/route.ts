@@ -9,16 +9,33 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+const ImageUrlSchema = z.string().url().max(2000);
+const ImageUrlsSchema = z.array(ImageUrlSchema).max(10);
+
 const PatchSchema = z.object({
   title: z.string().min(1).max(200).optional(),
   description: z.string().max(2000).nullish(),
   price_standard: z.number().min(0).max(100000).optional(),
   price_member: z.number().min(0).max(100000).optional(),
   cost_price: z.number().min(0).max(100000).optional(),
-  image_url: z.string().url().max(2000).nullish(),
+  image_url: ImageUrlSchema.nullish(),
+  image_urls: ImageUrlsSchema.optional(),
   is_active: z.boolean().optional(),
   sort_order: z.number().int().min(0).max(10000).optional(),
 });
+
+function normalizeImages(
+  data: z.infer<typeof PatchSchema>,
+): Partial<z.infer<typeof PatchSchema>> {
+  if (data.image_urls === undefined && data.image_url === undefined) {
+    return {};
+  }
+  const imageUrls = data.image_urls ?? (data.image_url ? [data.image_url] : []);
+  return {
+    image_urls: imageUrls,
+    image_url: imageUrls[0] ?? null,
+  };
+}
 
 export async function GET(
   _req: Request,
@@ -70,7 +87,7 @@ export async function PATCH(
     const supabase = createAdminClient();
     const { data, error } = await supabase
       .from("products")
-      .update(parsed.data)
+      .update({ ...parsed.data, ...normalizeImages(parsed.data) })
       .eq("id", id)
       .select("*")
       .single();

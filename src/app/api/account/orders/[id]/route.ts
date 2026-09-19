@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { SUPABASE_CONFIGURED } from "@/lib/constants";
+import type { CartItem } from "@/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,6 +18,18 @@ const PatchSchema = z.object({
   delivery_address: z.string().max(300).nullish(),
   notes: z.string().max(500).nullish(),
 });
+
+async function restoreStockForOrder(
+  items: { productId: string; qty: number }[],
+) {
+  const admin = createAdminClient();
+  for (const item of items ?? []) {
+    await admin.rpc("increment_inventory", {
+      p_product_id: item.productId,
+      p_qty: item.qty,
+    });
+  }
+}
 
 export async function PATCH(
   req: Request,
@@ -53,15 +67,42 @@ export async function PATCH(
     !canEditStatuses.includes(parsed.data.status)
   ) {
     return NextResponse.json(
-      { error: "לא ניתן לשנות סטטוס הזמנה זו" },
+      { error: "לא ניתן לשנות סטטוס ההזמנה זו" },
       { status: 403 },
     );
   }
 
   try {
+    const { data: existing, error: fetchErr } = await supabase
+      .from("orders")
+      .select("status, items, inventory_deducted")
+      .eq("id", id)
+      .eq("user_id", user.id)
+      .single();
+
+    if (fetchErr || !existing) {
+      return NextResponse.json(
+        { error: "הזמנה לא נמצאה או שאינך בעל ההזמנה" },
+        { status: 404 },
+      );
+    }
+
+    const existingItems = (existing.items ?? []) as CartItem[];
+    const isCancelling = parsed.data.status === "cancelled";
+    const shouldRestore = isCancelling && existing.inventory_deducted === true;
+
+    if (shouldRestore && existingItems.length > 0) {
+      await restoreStockForOrder(existingItems);
+    }
+
+    const updatePayload: Record<string, unknown> = { ...parsed.data };
+    if (shouldRestore) {
+      updatePayload.inventory_deducted = false;
+    }
+
     const { data, error } = await supabase
       .from("orders")
-      .update(parsed.data)
+      .update(updatePayload)
       .eq("id", id)
       .eq("user_id", user.id)
       .select("*")
@@ -105,9 +146,28 @@ export async function DELETE(
   }
 
   try {
+    const { data: existing, error: fetchErr } = await supabase
+      .from("orders")
+      .select("status, items, inventory_deducted")
+      .eq("id", id)
+      .eq("user_id", user.id)
+      .single();
+
+    if (fetchErr || !existing) {
+      return NextResponse.json(
+        { error: "הזמנה לא נמצאה או שאינך בעל ההזמנה" },
+        { status: 404 },
+      );
+    }
+
+    const existingItems = (existing.items ?? []) as CartItem[];
+    if (existing.inventory_deducted === true && existingItems.length > 0) {
+      await restoreStockForOrder(existingItems);
+    }
+
     const { error } = await supabase
       .from("orders")
-      .update({ status: "cancelled" })
+      .update({ status: "cancelled", inventory_deducted: false })
       .eq("id", id)
       .eq("user_id", user.id);
 

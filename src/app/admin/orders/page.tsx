@@ -21,6 +21,7 @@ import {
   isAdminAuthenticated,
 } from "@/components/AdminGate";
 import { AdminNav } from "@/components/AdminNav";
+import { AdminOrderForm } from "@/components/AdminOrderForm";
 import { formatILS } from "@/lib/utils";
 import type { Order } from "@/types";
 
@@ -107,13 +108,17 @@ export default function AdminOrdersPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
       });
-      if (!res.ok) throw new Error("עדכון נכשל");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        const apiMsg = (errData as { error?: string }).error;
+        throw new Error(apiMsg || "עדכון נכשל");
+      }
       const data = (await res.json()) as { order: Order };
       setOrders((prev) =>
         prev.map((o) => (o.id === order.id ? data.order : o)),
       );
-    } catch {
-      setError("עדכון ההזמנה נכשל");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "עדכון ההזמנה נכשל");
     } finally {
       setUpdating(null);
     }
@@ -197,6 +202,12 @@ export default function AdminOrdersPage() {
                 חנות
               </Link>
             </Button>
+            <Button asChild size="sm" variant="outline">
+              <Link href="/stall" target="_blank">
+                <ExternalLink className="h-4 w-4" />
+                דוכן
+              </Link>
+            </Button>
             <Button size="sm" variant="ghost" onClick={logout}>
               <LogOut className="h-4 w-4" />
               יציאה
@@ -214,18 +225,18 @@ export default function AdminOrdersPage() {
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h1 className="text-xl font-bold">הזמנות</h1>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <div className="relative w-full sm:w-56">
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="חיפוש לפי שם/טלפון..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-8 text-sm"
-              />
-            </div>
-            ﻿            <div className="flex gap-2 overflow-x-auto pb-1">
-              <button
+           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+             <div className="relative w-full sm:w-56">
+               <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+               <Input
+                 placeholder="חיפוש לפי שם/טלפון..."
+                 value={search}
+                 onChange={(e) => setSearch(e.target.value)}
+                 className="pl-8 text-sm"
+               />
+             </div>
+             &nbsp;            <div className="flex gap-2 overflow-x-auto pb-1">
+               <button
                 onClick={() => setStatusFilter("all")}
                 className={`whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium border ${statusFilter === "all"
                   ? "bg-primary text-primary-foreground border-primary"
@@ -303,10 +314,11 @@ export default function AdminOrdersPage() {
               ) : (
                 <Download className="h-4 w-4" />
               )}
-              הורד רשימת משלוחים
-            </Button>
+               הורד רשימת משלוחים
+             </Button>
+<AdminOrderForm onOrderCreated={() => void load(includeArchived)} />
+            </div>
           </div>
-        </div>
 
         {loading ? (
           <div className="flex justify-center py-10">
@@ -320,16 +332,18 @@ export default function AdminOrdersPage() {
           <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
             <table className="w-full min-w-[700px] text-sm">
                <thead className="bg-muted/50 text-start text-xs uppercase text-muted-foreground">
-                 <tr>
-                   <th className="p-3 text-start">תאריך</th>
-                   <th className="p-3 text-start">לקוח</th>
-                   <th className="p-3 text-start">סוג לקוח</th>
-                   <th className="p-3 text-start">פריטים</th>
-                   <th className="p-3 text-start">סוג משלוח</th>
-                   <th className="p-3 text-start">סה״כ</th>
-                   <th className="p-3 text-start">סטטוס</th>
-                   <th className="p-3 text-start">פעולות</th>
-                 </tr>
+                <tr>
+                    <th className="p-3 text-start">תאריך</th>
+                    <th className="p-3 text-start">לקוח</th>
+                    <th className="p-3 text-start">סוג לקוח</th>
+                    <th className="p-3 text-start">פריטים</th>
+                    <th className="p-3 text-start">סוג משלוח</th>
+                    <th className="p-3 text-start">סה״כ</th>
+                    <th className="p-3 text-start">סטטוס</th>
+                    <th className="p-3 text-start">הערות</th>
+                    <th className="p-3 text-start">שיטת תשלום</th>
+                    <th className="p-3 text-start">פעולות</th>
+                  </tr>
                </thead>
               <tbody>
                 {filtered.map((o) => {
@@ -389,14 +403,34 @@ export default function AdminOrdersPage() {
                        <td className="p-3 font-semibold tabular-nums">
                          {formatILS(o.total_amount)}
                        </td>
-                       <td className="p-3">
-                         <span className={`inline-block rounded-md border px-2 py-1 text-xs font-medium ${STATUS_COLOR[o.status]}`}>
-                           {STATUS_OPTIONS.find((s) => s.value === o.status)?.label ?? o.status}
-                         </span>
-                       </td>
-                       <td className="p-3">
-                         <div className="flex items-center gap-1">
-                           {o.status === "pending_payment" && (
+                        <td className="p-3">
+                          <span className={`inline-block rounded-md border px-2 py-1 text-xs font-medium ${STATUS_COLOR[o.status]}`}>
+                            {STATUS_OPTIONS.find((s) => s.value === o.status)?.label ?? o.status}
+                          </span>
+                         </td>
+                         <td className="p-3">
+                           {o.notes ? (
+                             <div className="relative max-w-[180px] cursor-help">
+                               <p className="line-clamp-2 text-xs text-muted-foreground" title={o.notes}>
+                                 {o.notes}
+                               </p>
+                             </div>
+                           ) : (
+                             <span className="text-xs text-muted-foreground">—</span>
+                           )}
+                         </td>
+                         <td className="p-3 text-xs">
+                           {o.payment_method ? (
+                             <span className="inline-flex items-center gap-1 rounded-full border border-primary/10 bg-primary/5 px-2 py-0.5 text-xs font-medium">
+                               {o.payment_method === "bit" ? "ביט" : o.payment_method === "paybox" ? "PayBox" : "מזומן"}
+                             </span>
+                           ) : (
+                             <span className="text-xs text-muted-foreground">—</span>
+                           )}
+                         </td>
+                         <td className="p-3">
+                           <div className="flex items-center gap-1">
+                            {o.status === "pending_payment" && (
                              <Button
                                size="sm"
                                onClick={() => updateStatus(o, "approved")}
@@ -405,9 +439,20 @@ export default function AdminOrdersPage() {
                              >
                                אשר תשלום
                              </Button>
-                           )}
-                           <Button
-                             asChild
+                            )}
+                            {o.status === "approved" && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => updateStatus(o, "pending_payment")}
+                                disabled={updating === o.id}
+                                className="rounded-full border-amber-300 text-amber-700 hover:bg-amber-50"
+                              >
+                                בטל אישור
+                              </Button>
+                            )}
+                            <Button
+                              asChild
                              variant="ghost"
                              size="sm"
                              aria-label={`הצג הזמנה ${o.id}`}
@@ -417,6 +462,7 @@ export default function AdminOrdersPage() {
                                <Package className="h-3.5 w-3.5" />
                              </Link>
                            </Button>
+                           
 <Button
                               variant="ghost"
                               size="sm"

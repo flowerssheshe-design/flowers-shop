@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowRight, ImagePlus, Loader2, Save } from "lucide-react";
+import { ArrowRight, ImagePlus, Loader2, Save, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -34,7 +34,14 @@ export function ProductForm({ mode, initial, nextSortOrder = 0 }: Props) {
   const [costPrice, setCostPrice] = useState(
     initial?.cost_price ?? 0,
   );
-  const [imageUrl, setImageUrl] = useState(initial?.image_url ?? "");
+  const [imageUrls, setImageUrls] = useState<string[]>(
+    initial?.image_urls?.length
+      ? initial.image_urls
+      : initial?.image_url
+        ? [initial.image_url]
+        : [],
+  );
+  const [imageUrlInput, setImageUrlInput] = useState("");
   const [isActive, setIsActive] = useState(initial?.is_active ?? true);
   const [sortOrder, setSortOrder] = useState(
     initial?.sort_order ?? nextSortOrder,
@@ -53,30 +60,39 @@ export function ProductForm({ mode, initial, nextSortOrder = 0 }: Props) {
   const discountAmount = calculateDiscountAmount(priceStandard, MEMBER_DISCOUNT_PERCENT);
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    if (!files.length) return;
     if (!SUPABASE_CONFIGURED) {
       setError("העלאת תמונות אינה זמינה — חסרים משתני סביבה");
+      return;
+    }
+    if (imageUrls.length + files.length > 10) {
+      setError("ניתן להוסיף עד 10 תמונות לזר");
       return;
     }
     setUploading(true);
     setError(null);
     try {
       const supabase = createClient();
-      const ext = file.name.split(".").pop() || "jpg";
-      const path = `products/${crypto.randomUUID()}.${ext}`;
-      const { error: upErr } = await supabase.storage
-        .from("product-images")
-        .upload(path, file, {
-          cacheControl: "3600",
-          upsert: false,
-          contentType: file.type,
-        });
-      if (upErr) throw upErr;
-      const { data } = supabase.storage
-        .from("product-images")
-        .getPublicUrl(path);
-      setImageUrl(data.publicUrl);
+      const uploadedUrls: string[] = [];
+      for (const file of files) {
+        const ext = file.name.split(".").pop() || "jpg";
+        const path = `products/${crypto.randomUUID()}.${ext}`;
+        const { error: upErr } = await supabase.storage
+          .from("product-images")
+          .upload(path, file, {
+            cacheControl: "3600",
+            upsert: false,
+            contentType: file.type,
+          });
+        if (upErr) throw upErr;
+        const { data } = supabase.storage
+          .from("product-images")
+          .getPublicUrl(path);
+        uploadedUrls.push(data.publicUrl);
+      }
+      setImageUrls((current) => [...current, ...uploadedUrls]);
     } catch (err) {
       setError(
         err instanceof Error
@@ -86,6 +102,19 @@ export function ProductForm({ mode, initial, nextSortOrder = 0 }: Props) {
     } finally {
       setUploading(false);
     }
+  }
+
+  function addImageUrl() {
+    const url = imageUrlInput.trim();
+    if (!url) return;
+    if (!imageUrls.includes(url)) {
+      setImageUrls((current) => [...current, url]);
+    }
+    setImageUrlInput("");
+  }
+
+  function removeImageUrl(index: number) {
+    setImageUrls((current) => current.filter((_, currentIndex) => currentIndex !== index));
   }
 
   async function submit(e: React.FormEvent) {
@@ -99,7 +128,8 @@ export function ProductForm({ mode, initial, nextSortOrder = 0 }: Props) {
         price_standard: Number(priceStandard),
         price_member: Number(priceMember),
         cost_price: Number(costPrice),
-        image_url: imageUrl.trim() || null,
+        image_url: imageUrls[0] ?? null,
+        image_urls: imageUrls,
         is_active: isActive,
         sort_order: Number(sortOrder),
       };
@@ -211,52 +241,99 @@ export function ProductForm({ mode, initial, nextSortOrder = 0 }: Props) {
              />
            </div>
 
-           <div className="space-y-2 rounded-lg border p-3">
-             <Label>תמונה</Label>
-          <div className="relative aspect-[4/3] w-full overflow-hidden rounded-md bg-muted">
-            <Image
-              src={imageUrl || FALLBACK}
-              alt="תצוגה מקדימה"
-              fill
-              sizes="(max-width: 640px) 100vw, 50vw"
-              className="object-cover"
-              unoptimized={!imageUrl}
-            />
-          </div>
-          <div>
-            <Label htmlFor="url" className="text-xs">
-              או הדביקו קישור לתמונה
-            </Label>
-            <Input
-              id="url"
-              type="url"
-              value={imageUrl}
-              onChange={(e) => setImageUrl(e.target.value)}
-              placeholder="https://…"
-              dir="ltr"
-            />
-          </div>
-          <div>
-            <Label
-              htmlFor="file"
-              className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-dashed px-3 py-2 text-sm hover:bg-muted"
-            >
-              {uploading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <ImagePlus className="h-4 w-4" />
-              )}
-              {uploading ? "מעלה…" : "העלאת קובץ מהמחשב"}
-            </Label>
-            <Input
-              id="file"
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={handleFile}
-            />
-          </div>
-        </div>
+           <div className="space-y-3 rounded-lg border p-3">
+             <div className="flex items-center justify-between">
+               <Label>תמונות</Label>
+               <span className="text-xs text-muted-foreground">
+                 {imageUrls.length}/10
+               </span>
+             </div>
+             <p className="text-xs text-muted-foreground">
+               התמונות להמחשה בלבד
+             </p>
+             <div className="relative aspect-[4/3] w-full overflow-hidden rounded-md bg-muted">
+               <Image
+                 src={imageUrls[0] || FALLBACK}
+                 alt="תצוגה מקדימה"
+                 fill
+                 sizes="(max-width: 640px) 100vw, 50vw"
+                 className="object-cover"
+                 unoptimized={!imageUrls[0]}
+               />
+             </div>
+             {imageUrls.length > 1 && (
+               <div className="grid grid-cols-5 gap-2">
+                 {imageUrls.map((url, index) => (
+                   <div
+                     key={`${url}-${index}`}
+                     className="relative aspect-square overflow-hidden rounded-md bg-muted"
+                   >
+                     <Image
+                       src={url}
+                       alt={`תמונה ${index + 1}`}
+                       fill
+                       sizes="100px"
+                       className="object-cover"
+                     />
+                     <button
+                       type="button"
+                       onClick={() => removeImageUrl(index)}
+                       aria-label={`הסר תמונה ${index + 1}`}
+                       className="absolute end-1 top-1 rounded-full bg-background/90 p-1 text-destructive shadow-sm"
+                     >
+                       <Trash2 className="h-3.5 w-3.5" />
+                     </button>
+                   </div>
+                 ))}
+               </div>
+             )}
+             <div>
+               <Label htmlFor="url" className="text-xs">
+                 או הדביקו קישור לתמונה נוספת
+               </Label>
+               <div className="flex gap-2">
+                 <Input
+                   id="url"
+                   type="url"
+                   value={imageUrlInput}
+                   onChange={(e) => setImageUrlInput(e.target.value)}
+                   placeholder="https://…"
+                   dir="ltr"
+                   disabled={imageUrls.length >= 10 || uploading}
+                 />
+                 <Button
+                   type="button"
+                   variant="outline"
+                   onClick={addImageUrl}
+                   disabled={!imageUrlInput.trim() || imageUrls.length >= 10 || uploading}
+                 >
+                   הוסף
+                 </Button>
+               </div>
+             </div>
+             <div>
+               <Label
+                 htmlFor="file"
+                 className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-dashed px-3 py-2 text-sm hover:bg-muted"
+               >
+                 {uploading ? (
+                   <Loader2 className="h-4 w-4 animate-spin" />
+                 ) : (
+                   <ImagePlus className="h-4 w-4" />
+                 )}
+                 {uploading ? "מעלה…" : "העלאת קבצים מהמחשב"}
+               </Label>
+               <Input
+                 id="file"
+                 type="file"
+                 accept="image/*"
+                 multiple
+                 className="hidden"
+                 onChange={handleFile}
+                 disabled={uploading}
+               />
+             </div>
+           </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div className="flex items-center justify-between rounded-md border p-3">

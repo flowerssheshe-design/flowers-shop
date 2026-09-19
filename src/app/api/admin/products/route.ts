@@ -35,16 +35,33 @@ export async function GET() {
   }
 }
 
+const ImageUrlSchema = z.string().url().max(2000);
+const ImageUrlsSchema = z.array(ImageUrlSchema).max(10);
+
 const ProductSchema = z.object({
   title: z.string().min(1).max(200),
   description: z.string().max(2000).nullish(),
   price_standard: z.number().min(0).max(100000),
   price_member: z.number().min(0).max(100000),
   cost_price: z.number().min(0).max(100000),
-  image_url: z.string().url().max(2000).nullish(),
+  image_url: ImageUrlSchema.nullish(),
+  image_urls: ImageUrlsSchema.optional(),
   is_active: z.boolean(),
   sort_order: z.number().int().min(0).max(10000),
 });
+
+function normalizeImages(
+  data: z.infer<typeof ProductSchema>,
+): Partial<z.infer<typeof ProductSchema>> {
+  if (data.image_urls === undefined && data.image_url === undefined) {
+    return {};
+  }
+  const imageUrls = data.image_urls ?? (data.image_url ? [data.image_url] : []);
+  return {
+    image_urls: imageUrls,
+    image_url: imageUrls[0] ?? null,
+  };
+}
 
 export async function POST(req: Request) {
   const denied = requireAdmin();
@@ -65,7 +82,7 @@ export async function POST(req: Request) {
     const supabase = createAdminClient();
     const { data, error } = await supabase
       .from("products")
-      .insert(parsed.data)
+      .insert({ ...parsed.data, ...normalizeImages(parsed.data) })
       .select("*")
       .single();
     if (error || !data) {

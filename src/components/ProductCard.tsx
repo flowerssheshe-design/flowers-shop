@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import { ChevronDown, ChevronUp, Minus, Plus, ShoppingBag, Store, Truck, X } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Minus, Plus, ShoppingBag, Store, Truck, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatILS } from "@/lib/utils";
 import {
@@ -39,11 +39,22 @@ export function ProductCard({ product, qty, onChange, qualifiesForMember, stock 
   const inPreorder = isPreorderPhase();
   const { mode } = useStoreMode();
   const isRealtimeMode = mode === "realtime";
-  const isOutOfStock = isRealtimeMode && stock <= 0;
+  const isOutOfStock = isRealtimeMode && (stock <= 0 || product.is_available === false);
 
   const [expanded, setExpanded] = useState(false);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
   const descRef = useRef<HTMLParagraphElement>(null);
   const [isClamped, setIsClamped] = useState(false);
+  const images = product.image_urls?.length
+    ? product.image_urls
+    : product.image_url
+      ? [product.image_url]
+      : [];
+  const activeImage = images[activeImageIndex];
+
+  useEffect(() => {
+    setActiveImageIndex(0);
+  }, [product.id, images.length]);
 
   useEffect(() => {
     const el = descRef.current;
@@ -57,10 +68,10 @@ export function ProductCard({ product, qty, onChange, qualifiesForMember, stock 
   return (
     <article className="group flex flex-col overflow-hidden rounded-2xl border border-primary/10 bg-card shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">
       <div className="relative aspect-[4/3] w-full overflow-hidden bg-cream">
-        {product.image_url ? (
+        {activeImage ? (
           <Image
-            src={product.image_url}
-            alt={product.title}
+            src={activeImage}
+            alt={`${product.title} תמונה ${activeImageIndex + 1}`}
             fill
             sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
             className="object-cover transition duration-500 group-hover:scale-105"
@@ -76,7 +87,52 @@ export function ProductCard({ product, qty, onChange, qualifiesForMember, stock 
           />
         )}
 
-        
+        {images.length > 1 && (
+          <>
+            <button
+              type="button"
+              onClick={() =>
+                setActiveImageIndex(
+                  (current) =>
+                    (current - 1 + images.length) % images.length,
+                )
+              }
+              aria-label="תמונה קודמת"
+              className="absolute start-2 top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-background/85 text-foreground shadow-md hover:bg-background"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                setActiveImageIndex((current) => (current + 1) % images.length)
+              }
+              aria-label="תמונה הבאה"
+              className="absolute end-2 top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-background/85 text-foreground shadow-md hover:bg-background"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <div
+              className="absolute bottom-2 start-1/2 z-10 flex -translate-x-1/2 gap-1 rounded-full bg-background/85 p-1"
+              aria-label="בחירת תמונה"
+            >
+              {images.map((image, index) => (
+                <button
+                  key={image}
+                  type="button"
+                  onClick={() => setActiveImageIndex(index)}
+                  aria-label={`תמונה ${index + 1}`}
+                  aria-current={index === activeImageIndex ? "true" : undefined}
+                  className={`h-2 rounded-full transition ${
+                    index === activeImageIndex
+                      ? "w-5 bg-primary"
+                      : "w-2 bg-foreground/40"
+                  }`}
+                />
+              ))}
+            </div>
+          </>
+        )}
 
         {/* Out of Stock Overlay */}
         {isOutOfStock && (
@@ -88,6 +144,10 @@ export function ProductCard({ product, qty, onChange, qualifiesForMember, stock 
           </div>
         )}
       </div>
+
+      <p className="px-5 pt-2 text-[11px] leading-snug text-muted-foreground">
+        התמונות להמחשה בלבד
+      </p>
 
       <div className="flex flex-1 flex-col gap-3 p-5">
         <div className="space-y-1">

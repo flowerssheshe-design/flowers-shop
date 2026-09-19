@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useCallback, useState } from "react";
-import { LogOut, Loader2, MessageSquare, Copy, Download, Truck, Package, ClipboardList, TrendingUp, RefreshCw, Archive, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { LogOut, Loader2, MessageSquare, Copy, Download, Truck, Package, ClipboardList, TrendingUp, RefreshCw, Archive, Trash2, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { clearAdminAuth, isAdminAuthenticated } from "@/components/AdminGate";
@@ -49,7 +50,7 @@ export default function AdminInventoryPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'preOrders' | 'liveStock' | 'supplier' | 'archives'>('preOrders');
   const [preOrderData, setPreOrderData] = useState<PreOrderItem[]>([]);
-  const [preOrderUnitsById, setPreOrderUnitsById] = useState<Record<string, number>>({});
+  const [liveOrderUnitsById, setLiveOrderUnitsById] = useState<Record<string, number>>({});
   const [supplier, setSupplier] = useState<SupplierAggregate[]>([]);
   const [supplierAdjustments, setSupplierAdjustments] = useState<Record<string, number>>({});
   const [error, setError] = useState<string | null>(null);
@@ -73,20 +74,27 @@ export default function AdminInventoryPage() {
     [supplier, supplierAdjustments, weekBounds],
   );
 
+  // Total supplier cost allocated to the stall. In live (real-time) mode, online
+  // orders are fulfilled from the physical stall inventory, so their supplier cost
+  // must be moved OUT of the stall allocation and into the "הזמנות מראש" block.
+  // `liveOrderUnitsById` only counts orders placed in live mode (inventory_deducted),
+  // so standard pre-orders (preorder mode) never touch the stall's cost base.
   const stallCost = useMemo(() => summary.reduce((sum, r) => {
     const initial = Math.max(0, r.initial_stock_count);
-    return sum + initial * r.cost_price;
-  }, 0), [summary]);
+    const liveUnitsTaken = liveOrderUnitsById[r.product_id] ?? 0;
+    const stallStock = Math.max(0, initial - liveUnitsTaken);
+    return sum + stallStock * r.cost_price;
+  }, 0), [summary, liveOrderUnitsById]);
 
-  // Stall revenue/profit: subtract pre-order units from inventory-based sales
-  // to avoid double-counting in Live Sale mode (online orders also deduct inventory).
+  // Stall revenue/profit: subtract live online order units from inventory-based
+  // sales so only genuine stall sales (and leftover stock) remain in the stall block.
   const stallRevenue = useMemo(() => summary.reduce((sum, r) => {
     const initial = Math.max(0, r.initial_stock_count);
     const inventoryBasedSold = Math.max(0, initial - r.live_stock_count);
-    const preOrderUnits = preOrderUnitsById[r.product_id] ?? 0;
-    const stallUnits = Math.max(0, inventoryBasedSold - preOrderUnits);
+    const liveUnitsTaken = liveOrderUnitsById[r.product_id] ?? 0;
+    const stallUnits = Math.max(0, inventoryBasedSold - liveUnitsTaken);
     return sum + stallUnits * r.price_standard;
-  }, 0), [summary, preOrderUnitsById]);
+  }, 0), [summary, liveOrderUnitsById]);
 
   const stallProfit = stallRevenue - stallCost;
 
@@ -97,12 +105,12 @@ export default function AdminInventoryPage() {
       const initial = Math.max(0, r.initial_stock_count);
       totalInitial += initial;
       const inventoryBasedSold = Math.max(0, initial - r.live_stock_count);
-      const preOrderUnits = preOrderUnitsById[r.product_id] ?? 0;
-      totalSold += Math.max(0, inventoryBasedSold - preOrderUnits);
+      const liveUnitsTaken = liveOrderUnitsById[r.product_id] ?? 0;
+      totalSold += Math.max(0, inventoryBasedSold - liveUnitsTaken);
     });
     if (totalInitial <= 0) return 0;
     return (totalSold / totalInitial) * 100;
-  }, [summary, preOrderUnitsById]);
+  }, [summary, liveOrderUnitsById]);
 
   const preorderStats = useMemo(() => {
     let units = 0;
@@ -190,10 +198,11 @@ export default function AdminInventoryPage() {
       const supplierData: SupplierAggregate[] = supplierRes.aggregates ?? [];
 
       // Build pre-order aggregation (only orders with a real customer phone)
-      // and simultaneously track per-product pre-order units to subtract from
-      // inventory-based stall sales (which include online-order deductions in Live Sale mode).
+      // Build pre-order (online) stats and simultaneously track per-product units
+      // from live orders that depleted the stall inventory, so the stall block's
+      // cost/revenue base excludes exactly what was taken out by live online orders.
       const preOrderAgg: Record<string, PreOrderItem> = {};
-      const preOrderUnitsById: Record<string, number> = {};
+      const liveOrderUnitsById: Record<string, number> = {};
 
       for (const order of ordersData) {
         const items = Array.isArray(order.items) ? order.items : [];
@@ -202,8 +211,14 @@ export default function AdminInventoryPage() {
         // Stall sales (empty customer_phone) are tracked via inventory deductions only.
         if (!order.customer_phone || order.customer_phone.trim() === '') continue;
 
-        const isActive = order.status === "approved" || order.status === "completed";
-        if (!isActive) continue;
+        // Count orders that are either fulfilled (approved/completed)
+        // or pending_payment but already had inventory deducted (realtime mode).
+        // This ensures the stall cost decreases immediately when a live sale
+        // order is placed, even before payment is confirmed.
+        const isFulfilled = order.status === "approved" || order.status === "completed";
+        const isPendingLiveOrder =
+          order.status === "pending_payment" && order.inventory_deducted === true;
+        if (!isFulfilled && !isPendingLiveOrder) continue;
 
         for (const item of items) {
           const prod = productMap.get(item.productId);
@@ -246,14 +261,19 @@ export default function AdminInventoryPage() {
           entry.profit = entry.approved_orders * Math.max(0, prod.price_standard - prod.cost_price);
           preOrderAgg[prod.id] = entry;
 
-          // Track pre-order units per product for stall adjustment
-          preOrderUnitsById[prod.id] = (preOrderUnitsById[prod.id] ?? 0) + qty;
+          // Track units from live (real-time) online orders that were fulfilled
+          // from the physical stall inventory (inventory_deducted=true), so the
+          // stall cost/revenue base is reduced ONLY for stock actually taken from
+          // the stall. Standard pre-orders (preorder mode) are left untouched.
+          if (order.inventory_deducted === true) {
+            liveOrderUnitsById[prod.id] = (liveOrderUnitsById[prod.id] ?? 0) + qty;
+          }
         }
       }
 
       const preOrderList = Object.values(preOrderAgg).sort((a, b) => a.title.localeCompare(b.title));
       setPreOrderData(preOrderList);
-      setPreOrderUnitsById(preOrderUnitsById);
+      setLiveOrderUnitsById(liveOrderUnitsById);
 
       const activeProducts = products.filter((p) => p.is_active);
       const aggregateMap = new Map(supplierData.map((a) => [a.product_id, a]));
@@ -455,6 +475,12 @@ export default function AdminInventoryPage() {
                 <Package className="h-4 w-4" />
                 חנות
               </a>
+            </Button>
+            <Button asChild size="sm" variant="outline" className="border-primary/20 hover:border-primary/40 hover:bg-primary/5">
+              <Link href="/stall" target="_blank">
+                <ExternalLink className="h-4 w-4" />
+                דוכן
+              </Link>
             </Button>
             <Button size="sm" variant="ghost" onClick={() => { clearAdminAuth(); window.location.replace("/admin"); }} className="hover:bg-destructive/10 hover:text-destructive">
               <LogOut className="h-4 w-4" />
@@ -727,8 +753,8 @@ export default function AdminInventoryPage() {
                         {summary.map((item) => {
     const initialStock = Math.max(0, item.initial_stock_count);
     const inventoryBasedSold = Math.max(0, initialStock - item.live_stock_count);
-    const preOrderUnits = preOrderUnitsById[item.product_id] ?? 0;
-    const unitsSold = Math.max(0, inventoryBasedSold - preOrderUnits);
+    const liveUnitsTaken = liveOrderUnitsById[item.product_id] ?? 0;
+    const unitsSold = Math.max(0, inventoryBasedSold - liveUnitsTaken);
     const sellThrough = initialStock > 0 ? (unitsSold / initialStock) * 100 : 0;
     const revenue = unitsSold * item.price_standard;
     const profit = unitsSold * Math.max(0, item.price_standard - item.cost_price);
