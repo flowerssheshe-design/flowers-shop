@@ -180,6 +180,12 @@ export default function AdminMessagesPage() {
                 חנות
               </Link>
             </Button>
+            <Button asChild size="sm" variant="outline">
+              <Link href="/stall" target="_blank">
+                <ExternalLink className="h-4 w-4" />
+                דוכן
+              </Link>
+            </Button>
             <Button size="sm" variant="ghost" onClick={logout}>
               <LogOut className="h-4 w-4" />
               יציאה
