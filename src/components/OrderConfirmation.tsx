@@ -274,16 +274,30 @@ export function OrderConfirmation({
           </h2>
         </div>
 
-        {paymentMethod === "bit" && bitNumber && (
+        {paymentMethod === "bit" && (
           <>
             <div className="rounded-lg bg-card/60 p-3 text-sm">
               <p className="text-foreground">
                 לשלם <strong className="font-semibold">{formatILS(order.total_amount)}</strong>
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                העבר את התשלום למספר לעיל, ולאחר מכן אשר את ההזמנה בוואטסאפ.
+                העבר את התשלום למספר לעיל, ולאחר מכן אשר בוואטסאפ.
               </p>
             </div>
+
+            {bitNumber && (
+              <div className="rounded-lg border border-primary/15 bg-primary/5 p-3 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">מספר ביט:</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-mono font-semibold text-primary">
+                      {bitNumber}
+                    </span>
+                    <CopyButton value={bitNumber} />
+                  </div>
+                </div>
+              </div>
+            )}
 
             {bitLink && (
               <Button
@@ -292,7 +306,26 @@ export function OrderConfirmation({
                 size="lg"
                 className="mt-3 w-full rounded-xl border-none bg-[#00b2b2] text-white hover:bg-[#009999]"
               >
-                <a href={bitLink} target="_blank" rel="noopener noreferrer">
+                <a
+                  href={bitLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => {
+                    // On desktop (no Bit app), fall back to WhatsApp after a short delay
+                    const t = setTimeout(() => {
+                      window.location.href = waLink;
+                    }, 500);
+                    // If the page is still focused after 500ms, the app likely
+                    // didn't open — navigate to WhatsApp to confirm the payment.
+                    document.addEventListener(
+                      "visibilitychange",
+                      () => {
+                        if (!document.hidden) clearTimeout(t);
+                      },
+                      { once: true },
+                    );
+                  }}
+                >
                   <span className="flex items-center justify-center gap-2">
                     <CreditCard className="h-4 w-4 text-white" />
                     תשלום בביט
@@ -300,6 +333,19 @@ export function OrderConfirmation({
                   </span>
                 </a>
               </Button>
+            )}
+
+            {!bitLink && bitNumber && (
+              <p className="mt-2 text-center text-xs text-muted-foreground">
+                לחיצה על כפתור &ldquo;תשלום בביט&rdquo; תפתח את אפליקציית ביט עם המסורת והכמות
+                כבר מולאים. אשרו את התשלום ישירות מהאפליקציה.
+              </p>
+            )}
+
+            {!bitLink && !bitNumber && (
+              <p className="mt-2 text-center text-xs text-muted-foreground">
+                אנא פנה לנו בוואטסאפ כדי לקבל את פרטי התשלום.
+              </p>
             )}
           </>
         )}
