@@ -93,7 +93,6 @@ export function OrderConfirmation({
   const waMsg = [
     `שלום! ביצעתי הזמנה חדשה ב"לתת מהלב"`,
     ``,
-    `*מספר הזמנה:* ${order.id}`,
     `*שם:* ${order.customer_name} (${order.customer_phone})`,
     `*פריטים:*`,
     ...items.map(
@@ -151,16 +150,12 @@ export function OrderConfirmation({
         <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-3xl">
           🌸
         </div>
-        <h1 className="brand-serif text-2xl font-bold text-primary">
-          תודה על ההזמנה!
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          מספר הזמנה:{" "}
-          <span className="font-mono font-semibold">{order.id}</span>
-        </p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {orderDateStr}
-        </p>
+         <h1 className="brand-serif text-2xl font-bold text-primary">
+           תודה על ההזמנה!
+         </h1>
+         <p className="mt-1 text-xs text-muted-foreground">
+           {orderDateStr}
+         </p>
       </div>
 
       {/* Progress Steps */}
@@ -310,21 +305,6 @@ export function OrderConfirmation({
                   href={bitLink}
                   target="_blank"
                   rel="noopener noreferrer"
-                  onClick={(e) => {
-                    // On desktop (no Bit app), fall back to WhatsApp after a short delay
-                    const t = setTimeout(() => {
-                      window.location.href = waLink;
-                    }, 500);
-                    // If the page is still focused after 500ms, the app likely
-                    // didn't open — navigate to WhatsApp to confirm the payment.
-                    document.addEventListener(
-                      "visibilitychange",
-                      () => {
-                        if (!document.hidden) clearTimeout(t);
-                      },
-                      { once: true },
-                    );
-                  }}
                 >
                   <span className="flex items-center justify-center gap-2">
                     <CreditCard className="h-4 w-4 text-white" />
