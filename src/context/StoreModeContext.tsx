@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { SETTINGS_UPDATED_EVENT } from "@/context/SystemSettingsContext";
 
 export type StoreMode = "preorder" | "realtime";
 
@@ -70,8 +71,18 @@ export function StoreModeProvider({ children }: { children: ReactNode }) {
         loadMode();
       }
     }
+
+    function handleSettingsUpdate() {
+      loadMode();
+    }
+
     window.addEventListener("storage", handleStorage);
-    return () => window.removeEventListener("storage", handleStorage);
+    window.addEventListener(SETTINGS_UPDATED_EVENT, handleSettingsUpdate);
+
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+      window.removeEventListener(SETTINGS_UPDATED_EVENT, handleSettingsUpdate);
+    };
   }, []);
 
   const setMode = async (newMode: StoreMode) => {

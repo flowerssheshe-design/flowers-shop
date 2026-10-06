@@ -1,6 +1,5 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { MEMBER_DISCOUNT_PERCENT } from "@/lib/constants";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -17,14 +16,14 @@ export function formatILS(value: number | null | undefined): string {
 
 export function calculateMemberPrice(
   standardPrice: number,
-  discountPercent = MEMBER_DISCOUNT_PERCENT,
+  discountPercent = 10,
 ): number {
   return Math.round((standardPrice * (100 - discountPercent)) / 100);
 }
 
 export function calculateDiscountAmount(
   standardPrice: number,
-  discountPercent = MEMBER_DISCOUNT_PERCENT,
+  discountPercent = 10,
 ): number {
   return Math.round((standardPrice * discountPercent) / 100);
 }
@@ -43,12 +42,32 @@ export function buildWhatsAppLink(
   return `https://wa.me/${cleaned}?text=${encodeURIComponent(message)}`;
 }
 
+export function isBitUrl(value: string): boolean {
+  const trimmed = value.trim();
+  return (
+    trimmed.startsWith("http://") ||
+    trimmed.startsWith("https://") ||
+    trimmed.startsWith("bit://")
+  );
+}
+
 export function buildBitLink(
-  phone: string,
+  bitValue: string,
   amount: number,
   note: string,
 ): string {
-  const cleaned = phone.replace(/\D/g, "");
+  const trimmed = bitValue.trim();
+  
+  if (isBitUrl(trimmed)) {
+    const url = new URL(trimmed);
+    url.searchParams.set("amount", amount.toFixed(2));
+    if (note) {
+      url.searchParams.set("note", note);
+    }
+    return url.toString();
+  }
+  
+  const cleaned = trimmed.replace(/\D/g, "");
   const normalized = cleaned.startsWith("972")
     ? cleaned
     : cleaned.startsWith("0")

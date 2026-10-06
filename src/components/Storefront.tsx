@@ -38,26 +38,20 @@ import { LoginDialog } from "@/components/LoginDialog";
 import { AccountUpsellDialog } from "@/components/AccountUpsellDialog";
 import { formatILS } from "@/lib/utils";
 import {
-  BIT_NUMBER,
-  DELIVERY_FEE,
-  MEMBER_DISCOUNT_PERCENT,
-  PAYBOX_NUMBER,
-  PICKUP_ADDRESS,
-  BUSINESS_PHONE,
-  BUSINESS_EMAIL,
-  BUSINESS_HOURS,
-  PICKUP_HOURS,
-} from "@/lib/constants";
-import {
-  CLUB_DISCOUNT_THRESHOLD,
   type CartItem,
   type DeliveryType,
   type Order,
   type Product,
   type SessionUser,
 } from "@/types";
+import { useSystemSettings } from "@/lib/useSystemSettings";
 import { useStoreMode } from "@/context/StoreModeContext";
 import { createClient } from "@/lib/supabase/client";
+import {
+  saveOrderState,
+  restoreOrderState,
+  clearOrderState,
+} from "@/lib/orderState";
 
 type Props = {
   products: Product[];
@@ -74,6 +68,7 @@ export function Storefront({
 }: Props) {
   const searchParams = useSearchParams();
   const { mode, isLoading: storeModeLoading, isStallOpen } = useStoreMode();
+  const settings = useSystemSettings();
   const [qty, setQty] = useState<Record<string, number>>({});
   const [cartOpen, setCartOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
@@ -95,12 +90,13 @@ export function Storefront({
   const [paymentMethod, setPaymentMethod] = useState<"bit" | "paybox" | "cash" | "">("");
   const [greetingNote, setGreetingNote] = useState("");
 
-  // Stall status toast state
+  // Stall status toast state — persistent until user dismisses
   const [showStallToast, setShowStallToast] = useState(false);
   const [prevStallOpen, setPrevStallOpen] = useState(isStallOpen);
   const isInitialLoadRef = useRef(true);
 
-  // Show toast when stall status changes (but not on initial load)
+  // Show toast when stall status changes (but not on initial load).
+  // The toast stays visible until the user clicks the X button.
   useEffect(() => {
     if (isInitialLoadRef.current) {
       isInitialLoadRef.current = false;
@@ -110,9 +106,6 @@ export function Storefront({
     if (!storeModeLoading && prevStallOpen !== isStallOpen) {
       setShowStallToast(true);
       setPrevStallOpen(isStallOpen);
-      // Auto-hide after 5 seconds
-      const timer = setTimeout(() => setShowStallToast(false), 5000);
-      return () => clearTimeout(timer);
     }
   }, [isStallOpen, storeModeLoading, prevStallOpen]);
 
@@ -235,6 +228,29 @@ export function Storefront({
     }
   }, [searchParams]);
 
+  // Restore persisted order state after successful auth redirect.
+  useEffect(() => {
+    if (searchParams?.get("restoreOrder") !== "1") return;
+    const saved = restoreOrderState();
+    if (!saved) return;
+    setQty(saved.qty);
+    setName(saved.checkout.name);
+    setPhone(saved.checkout.phone);
+    setAddress(saved.checkout.address);
+    setNotes(saved.checkout.notes);
+    setDeliveryType(saved.checkout.deliveryType);
+    setPaymentMethod(saved.checkout.paymentMethod);
+    setCheckoutOpen(true);
+    clearOrderState();
+    try {
+      const url = new window.URL(window.location.href);
+      url.searchParams.delete("restoreOrder");
+      window.history.replaceState({}, "", url.toString());
+    } catch {
+      // ignore
+    }
+  }, [searchParams]);
+
   // Cart items always priced per the user's qualification status.
   const cartItems: CartItem[] = useMemo(() => {
     return products
@@ -256,7 +272,7 @@ export function Storefront({
   }, [products, qty, qualifiesForMember]);
 
   const subtotal = cartItems.reduce((s, it) => s + it.price * it.qty, 0);
-  const deliveryFee = deliveryType === "delivery" ? DELIVERY_FEE : 0;
+  const deliveryFee = deliveryType === "delivery" ? settings.delivery_fee ?? 0 : 0;
   const total = subtotal + deliveryFee;
   const cartCount = cartItems.reduce((s, it) => s + it.qty, 0);
 
@@ -332,6 +348,17 @@ export function Storefront({
   function openCheckout() {
     if (cartItems.length === 0) return;
     if (!user) {
+      saveOrderState({
+        qty,
+        checkout: {
+          name,
+          phone,
+          address,
+          notes,
+          deliveryType,
+          paymentMethod,
+        },
+      });
       setUpsellOpen(true);
       return;
     }
@@ -354,8 +381,8 @@ export function Storefront({
         <OrderConfirmation
           paymentMethod={submittedOrder.payment_method}
           order={submittedOrder}
-          bitNumber={BIT_NUMBER}
-          payboxNumber={PAYBOX_NUMBER}
+          bitNumber={settings.bit_number}
+          payboxNumber={settings.paybox_number}
         />
       </main>
     );
@@ -457,19 +484,19 @@ export function Storefront({
               <ul className="space-y-2 text-sm">
                 <li className="flex items-center gap-2">
                   <Phone className="h-4 w-4 text-primary/70" />
-                  <a href={`tel:${BUSINESS_PHONE}`} className="hover:text-primary">
-                    {BUSINESS_PHONE}
+                  <a href={`tel:${settings.business_phone}`} className="hover:text-primary">
+                    {settings.business_phone}
                   </a>
                 </li>
                 <li className="flex items-center gap-2">
                   <Mail className="h-4 w-4 text-primary/70" />
-                  <a href={`mailto:${BUSINESS_EMAIL}`} className="hover:text-primary">
-                    {BUSINESS_EMAIL}
+                  <a href={`mailto:${settings.business_email}`} className="hover:text-primary">
+                    {settings.business_email}
                   </a>
                 </li>
                 <li className="flex items-center gap-2">
                   <Clock className="h-4 w-4 text-primary/70" />
-                  <span>{BUSINESS_HOURS}</span>
+                  <span>{settings.business_hours}</span>
                 </li>
               </ul>
             </div>
@@ -479,12 +506,12 @@ export function Storefront({
               <ul className="space-y-2 text-sm">
                 <li className="flex items-start gap-2">
                   <MapPin className="mt-0.5 h-4 w-4 text-primary/70" />
-                  <span>{PICKUP_ADDRESS}</span>
+                  <span>{settings.pickup_address}</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <StoreIcon className="mt-0.5 h-4 w-4 text-primary/70" />
                   <span>
-                    איסוף זמין ביום שישי, {PICKUP_HOURS}
+                    איסוף זמין ביום שישי, {settings.pickup_hours}
                   </span>
                 </li>
               </ul>
@@ -531,7 +558,18 @@ export function Storefront({
         initialMode={loginMode}
         onSuccess={() => {
           setLoginOpen(false);
-          window.location.reload();
+          saveOrderState({
+            qty,
+            checkout: {
+              name,
+              phone,
+              address,
+              notes,
+              deliveryType,
+              paymentMethod,
+            },
+          });
+          window.location.href = "/?restoreOrder=1";
         }}
       />
 
@@ -597,8 +635,9 @@ export function Storefront({
             </span>
             <button
               onClick={() => setShowStallToast(false)}
-              className="ml-2 p-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 transition"
+              className="ml-2 flex shrink-0 items-center justify-center rounded-full bg-black/10 dark:bg-white/10 p-2.5 transition hover:bg-black/20 dark:hover:bg-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/40"
               aria-label="סגור"
+              style={{ minHeight: 44, minWidth: 44 }}
             >
               <X className="h-4 w-4" aria-hidden="true" />
             </button>
@@ -643,6 +682,7 @@ function CartDrawer({
   onCheckout,
   onContinue,
 }: CartDrawerProps) {
+  const settings = useSystemSettings();
   return (
     <DialogContent className="flex max-w-md flex-col gap-0 p-0">
       <DialogHeader>
@@ -689,13 +729,13 @@ function CartDrawer({
             </ul>
 
             {deliveryType === "pickup" && (
-                <div className="mt-3 rounded-lg border border-primary/15 bg-primary/5 p-3 text-xs text-muted-foreground">
-                  <strong className="text-foreground">לתשומת ליבכם:</strong> הזמנות
-                  עם איסוף עצמי יתאספו בכתובת {" "}
-                  <span className="font-medium text-foreground">{PICKUP_ADDRESS}</span>.
-                  זמני איסוף: שישי 10:00-15:00.
-                  <br />
-                  <span className="font-medium text-foreground">משלוח עד הבית בשישי:</span> זמין בתחומי ירוחם בלבד.
+                <div className="mt-3 space-y-2 rounded-lg border border-primary/15 bg-primary/5 p-3 text-xs text-muted-foreground">
+                  <p className="font-semibold text-foreground">לתשומת לבכם</p>
+                  <ul className="space-y-1">
+                    <li>איסוף עצמי: הזמנות יתאספו בכתובת <span className="font-medium text-foreground">{settings.pickup_address}</span></li>
+                    <li>זמני איסוף (יום שישי): <span className="font-medium text-foreground">{settings.pickup_hours}</span></li>
+                    <li>משלוח עד הבית בשישי: זמין בתחומי ירוחם בלבד</li>
+                  </ul>
                 </div>
             )}
 
@@ -764,6 +804,7 @@ type CheckoutDialogProps = {
 };
 
 function CheckoutDialog(props: CheckoutDialogProps) {
+  const settings = useSystemSettings();
   const {
     cartItems,
     subtotal,
@@ -787,7 +828,7 @@ function CheckoutDialog(props: CheckoutDialogProps) {
     setPaymentMethod,
   } = props;
 
-  const deliveryFee = deliveryType === "delivery" ? DELIVERY_FEE : 0;
+  const deliveryFee = deliveryType === "delivery" ? settings.delivery_fee ?? 0 : 0;
   const total = subtotal + deliveryFee;
 
   return (
@@ -825,7 +866,7 @@ function CheckoutDialog(props: CheckoutDialogProps) {
               <Truck className="h-4 w-4" />
               משלוח עד הבית
               <span className="ms-1 rounded-full bg-gold/20 px-1.5 py-0.5 text-xs">
-                +{formatILS(DELIVERY_FEE)}
+                +{formatILS(settings.delivery_fee)}
               </span>
             </button>
           </div>
@@ -975,7 +1016,7 @@ function CheckoutDialog(props: CheckoutDialogProps) {
             {qualifiesForMember && (
               <div className="flex items-center gap-1 text-xs text-gold-foreground">
                 <Sparkles className="h-3 w-3 text-gold" />
-                הנחת קונה קבוע של {MEMBER_DISCOUNT_PERCENT}% הופעלה אוטומטית.
+                הנחת קונה קבוע של {settings.member_discount_percent}% הופעלה אוטומטית.
               </div>
             )}
           </div>

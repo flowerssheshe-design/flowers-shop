@@ -1,8 +1,8 @@
-"use client";
+﻿"use client";
 
 import { Button } from "@/components/ui/button";
-import { buildBitLink, buildWhatsAppLink, formatILS } from "@/lib/utils";
-import { WHATSAPP_NUMBER, PICKUP_ADDRESS } from "@/lib/constants";
+import { buildBitLink, buildWhatsAppLink, formatILS, isBitUrl } from "@/lib/utils";
+import { useSystemSettings } from "@/lib/useSystemSettings";
 import type { Order } from "@/types";
 import {
   ArrowRight,
@@ -88,6 +88,8 @@ export function OrderConfirmation({
   payboxNumber,
   paymentMethod,
 }: Props) {
+  const settings = useSystemSettings();
+  const effectiveBitNumber = bitNumber ?? settings.bit_number;
   const items = Array.isArray(order.items) ? order.items : [];
 
   const waMsg = [
@@ -101,7 +103,7 @@ export function OrderConfirmation({
     ``,
     order.delivery_type === "delivery"
       ? `*משלוח:* ${order.delivery_address ?? ""}`
-      : `*איסוף עצמי:* ${PICKUP_ADDRESS}`,
+      : `*איסוף עצמי:* ${settings.pickup_address ?? ""}`,
     ``,
     `*סה"כ:* *${formatILS(order.total_amount)}*`,
     `שילמתי ב-${
@@ -113,11 +115,12 @@ export function OrderConfirmation({
     } / ממתין לאישור`,
   ].join("\n");
 
-  const waLink = buildWhatsAppLink(WHATSAPP_NUMBER, waMsg);
+  const waLink = buildWhatsAppLink(settings.whatsapp_number ?? "", waMsg);
   const bitLink =
-    paymentMethod === "bit" && bitNumber
-      ? buildBitLink(bitNumber, order.total_amount, "תשלום ביט בלתת מהלב")
+    paymentMethod === "bit" && effectiveBitNumber
+      ? buildBitLink(effectiveBitNumber, order.total_amount, "תשלום ביט בלתת מהלב")
       : null;
+  const isBitLinkUrl = bitLink && isBitUrl(effectiveBitNumber ?? "");
 
   const paymentInfo = PAYMENT_INFO[paymentMethod ?? ""] ?? PAYMENT_INFO.cash;
   const PaymentIcon = paymentInfo.icon;
@@ -252,7 +255,7 @@ export function OrderConfirmation({
           ) : (
             <>
               <Store className="h-3.5 w-3.5 shrink-0" />
-              <span>איסוף עצמי — {PICKUP_ADDRESS}</span>
+              <span>איסוף עצמי — {settings.pickup_address}</span>
             </>
           )}
         </div>
@@ -280,15 +283,15 @@ export function OrderConfirmation({
               </p>
             </div>
 
-            {bitNumber && (
+            {effectiveBitNumber && (
               <div className="rounded-lg border border-primary/15 bg-primary/5 p-3 text-sm">
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-muted-foreground">מספר ביט:</span>
                   <div className="flex items-center gap-1.5">
                     <span className="font-mono font-semibold text-primary">
-                      {bitNumber}
+                      {effectiveBitNumber}
                     </span>
-                    <CopyButton value={bitNumber} />
+                    <CopyButton value={effectiveBitNumber} />
                   </div>
                 </div>
               </div>
@@ -296,33 +299,42 @@ export function OrderConfirmation({
 
             {bitLink && (
               <Button
-                asChild
+                asChild={!isBitLinkUrl}
                 variant="default"
                 size="lg"
                 className="mt-3 w-full rounded-xl border-none bg-[#00b2b2] text-white hover:bg-[#009999]"
+                onClick={isBitLinkUrl ? () => window.open(bitLink, "_blank") : undefined}
               >
-                <a
-                  href={bitLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
+                {isBitLinkUrl ? (
                   <span className="flex items-center justify-center gap-2">
                     <CreditCard className="h-4 w-4 text-white" />
                     תשלום בביט
                     <ArrowRight className="h-4 w-4 text-white" />
                   </span>
-                </a>
+                ) : (
+                  <a
+                    href={bitLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <span className="flex items-center justify-center gap-2">
+                      <CreditCard className="h-4 w-4 text-white" />
+                      תשלום בביט
+                      <ArrowRight className="h-4 w-4 text-white" />
+                    </span>
+                  </a>
+                )}
               </Button>
             )}
 
-            {!bitLink && bitNumber && (
+            {!bitLink && effectiveBitNumber && (
               <p className="mt-2 text-center text-xs text-muted-foreground">
                 לחיצה על כפתור &ldquo;תשלום בביט&rdquo; תפתח את אפליקציית ביט עם המסורת והכמות
                 כבר מולאים. אשרו את התשלום ישירות מהאפליקציה.
               </p>
             )}
 
-            {!bitLink && !bitNumber && (
+            {!bitLink && !effectiveBitNumber && (
               <p className="mt-2 text-center text-xs text-muted-foreground">
                 אנא פנה לנו בוואטסאפ כדי לקבל את פרטי התשלום.
               </p>
@@ -387,11 +399,11 @@ export function OrderConfirmation({
       <div className="flex flex-wrap items-center justify-center gap-4 text-center text-xs text-muted-foreground">
         <span className="flex items-center gap-1">
           <Phone className="h-3 w-3" />
-          {process.env.NEXT_PUBLIC_BUSINESS_PHONE ?? "05-32455705"}
+          {settings.business_phone}
         </span>
         <span className="flex items-center gap-1">
           <Clock className="h-3 w-3" />
-          {process.env.NEXT_PUBLIC_BUSINESS_HOURS ?? "ראשון-חמישי 08:00-18:00"}
+          {settings.business_hours}
         </span>
       </div>
     </div>

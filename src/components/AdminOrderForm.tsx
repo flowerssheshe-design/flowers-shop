@@ -1,7 +1,7 @@
-"use client";
+﻿"use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Plus, Save, Trash2, Loader2, Sparkles } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Plus, Save, Trash2, Loader2, Sparkles, Search, UserCheck, X, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,10 +14,10 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { DELIVERY_FEE, MEMBER_DISCOUNT_PERCENT } from "@/lib/constants";
+import { useSystemSettings } from "@/lib/useSystemSettings";
 import { calculateMemberPrice, formatILS } from "@/lib/utils";
 import { useToast } from "@/components/ui/toaster";
-import type { CartItem, DeliveryType, Order, Product, PaymentMethod } from "@/types";
+import type { AdminUser, CartItem, DeliveryType, Order, Product, PaymentMethod } from "@/types";
 
 const STATUS_OPTIONS: Array<{ value: Order["status"]; label: string }> = [
   { value: "pending_payment", label: "ממתין לאישור תשלום" },
@@ -36,6 +36,7 @@ type Props = {
 
 export function AdminOrderForm({ onOrderCreated }: Props) {
   const { toast } = useToast();
+  const settings = useSystemSettings();
   const [open, setOpen] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
@@ -53,7 +54,15 @@ export function AdminOrderForm({ onOrderCreated }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  useEffect(() => {
+  // Customer search
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [filteredUsers, setFilteredUsers] = useState<AdminUser[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+
+useEffect(() => {
     if (!open) return;
     const controller = new AbortController();
     setLoadingProducts(true);
@@ -72,6 +81,26 @@ export function AdminOrderForm({ onOrderCreated }: Props) {
   }, [open]);
 
   useEffect(() => {
+    if (!open) return;
+    const controller = new AbortController();
+    setLoadingUsers(true);
+    fetch("/api/admin/users", { signal: controller.signal, cache: "no-store" })
+      .then((res) => res.json())
+      .then((data) => {
+        const loadedUsers = data.users ?? [];
+        setUsers(loadedUsers);
+        setFilteredUsers(loadedUsers);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setUsers([]);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoadingUsers(false);
+      });
+    return () => controller.abort();
+  }, [open]);
+
+  useEffect(() => {
     if (products.length > 0 && items.every((it) => !it.productId)) {
       setItems((prev) => prev.map((it) => ({ ...it, productId: products[0]?.id ?? "" })));
     }
@@ -83,21 +112,58 @@ export function AdminOrderForm({ onOrderCreated }: Props) {
     }
   }, [products, items]);
 
-  const productById = useMemo(
+  useEffect(() => {
+    if (!customerSearch.trim()) {
+      setFilteredUsers(users);
+      return;
+    }
+    const term = customerSearch.trim().toLowerCase();
+    setFilteredUsers(
+      users.filter(
+        (u) =>
+          u.email?.toLowerCase().includes(term) ||
+          u.full_name?.toLowerCase().includes(term) ||
+          u.phone?.includes(term),
+      ),
+    );
+  }, [users, customerSearch]);
+
+const productById = useMemo(
     () => new Map(products.map((p) => [p.id, p])),
     [products],
   );
 
-  function itemPrice(product: Product | undefined): number {
-    if (!product) return 0;
-    return isMember
-      ? product.price_member > 0
-        ? product.price_member
-        : product.price_standard
-      : product.price_standard;
+  const itemPrice = useCallback(
+    (product: Product | undefined): number => {
+      if (!product) return 0;
+      return isMember
+        ? product.price_member > 0
+          ? product.price_member
+          : product.price_standard
+        : product.price_standard;
+    },
+    [isMember],
+  );
+
+  function selectUser(user: AdminUser) {
+    setCustomerName(user.full_name ?? "");
+    setCustomerPhone(user.phone ?? "");
+    setAddress(user.address ?? "");
+    setSelectedUserId(user.id);
+    setIsMember((user.completed_count ?? 0) >= (settings.club_discount_threshold ?? 3));
+    setShowUserDropdown(false);
+    setCustomerSearch("");
   }
 
-  const deliveryFee = deliveryType === "delivery" ? DELIVERY_FEE : 0;
+  function clearSelectedUser() {
+    setSelectedUserId(null);
+    setCustomerName("");
+    setCustomerPhone("");
+    setAddress("");
+    setIsMember(false);
+  }
+
+  const deliveryFee = deliveryType === "delivery" ? settings.delivery_fee ?? 0 : 0;
 
   const cartItems = useMemo(() => {
     return items
@@ -113,8 +179,8 @@ export function AdminOrderForm({ onOrderCreated }: Props) {
           image_url: product.image_url,
         } as CartItem;
       })
-      .filter((it): it is CartItem => it !== null);
-  }, [items, productById, isMember]);
+.filter((it): it is CartItem => it !== null);
+  }, [items, productById, itemPrice]);
 
   const subtotal = cartItems.reduce((s, it) => s + it.price * it.qty, 0);
   const total = subtotal + deliveryFee;
@@ -141,7 +207,7 @@ export function AdminOrderForm({ onOrderCreated }: Props) {
     (deliveryType === "pickup" || address.trim().length >= 4) &&
     paymentMethod !== "";
 
-  function resetForm() {
+function resetForm() {
     setCustomerName("");
     setCustomerPhone("");
     setDeliveryType("pickup");
@@ -153,9 +219,12 @@ export function AdminOrderForm({ onOrderCreated }: Props) {
     setGreetingNote("");
     setStatus("pending_payment");
     setSubmitError(null);
+    setSelectedUserId(null);
+    setCustomerSearch("");
+    setShowUserDropdown(false);
   }
 
-  async function submit() {
+async function submit() {
     if (!canSubmit || submitting || !hasValidItems) return;
     setSubmitting(true);
     setSubmitError(null);
@@ -178,6 +247,7 @@ export function AdminOrderForm({ onOrderCreated }: Props) {
           payment_method: paymentMethod || undefined,
           greeting_note: greetingNote.trim() || null,
           status,
+          user_id: selectedUserId,
         }),
       });
       if (!res.ok) {
@@ -218,15 +288,103 @@ export function AdminOrderForm({ onOrderCreated }: Props) {
             <DialogTitle className="text-xl">הזמנה חדשה מהדוכן</DialogTitle>
           </DialogHeader>
 
-          <div className="max-h-[80vh] space-y-4 overflow-y-auto px-1 pb-2">
-            {/* Customer */}
+<div className="max-h-[80vh] space-y-4 overflow-y-auto px-1 pb-2">
+            {/* Customer Search */}
+            <div className="space-y-2">
+              <Label>לקוח</Label>
+              <div className="relative">
+                <div className="relative">
+                  <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="customer-search"
+                    value={customerSearch}
+                    onChange={(e) => {
+                      setCustomerSearch(e.target.value);
+                      setShowUserDropdown(true);
+                    }}
+                    onFocus={() => setShowUserDropdown(true)}
+                    placeholder="חפש לקוח קיים לפי שם/אימייל/טלפון..."
+                    className="pr-10"
+                    autoComplete="off"
+                  />
+                  {selectedUserId && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute left-2 top-1/2 -translate-y-1/2 h-7 text-xs text-destructive hover:text-destructive"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        clearSelectedUser();
+                      }}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                      נקה
+                    </Button>
+                  )}
+                </div>
+                {showUserDropdown && filteredUsers.length > 0 && !loadingUsers && (
+                  <div className="absolute right-0 left-0 z-10 mt-1 rounded-md border bg-card shadow-lg max-h-60 overflow-auto">
+                    {filteredUsers.map((user) => (
+                      <button
+                        key={user.id}
+                        type="button"
+                        onClick={() => selectUser(user)}
+                        className={`w-full text-start px-3 py-2 text-sm hover:bg-accent ${
+                          selectedUserId === user.id ? "bg-accent" : ""
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="font-medium">
+                              {user.full_name || "—"}
+                            </div>
+                            <div className="text-xs text-muted-foreground flex items-center gap-1">
+                              {user.email && <span dir="ltr">{user.email}</span>}
+                              {user.phone && (
+                                <>
+                                  {user.email && <span className="text-muted-foreground">·</span>}
+                                  <span dir="ltr">{user.phone}</span>
+                                </>
+                              )}
+                              {(user.completed_count ?? 0) >= (settings.club_discount_threshold ?? 3) && (
+                                <UserCheck className="h-3 w-3 text-gold" />
+                              )}
+                            </div>
+                          </div>
+                          {selectedUserId === user.id && (
+                            <span className="text-primary">נבחר</span>
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {showUserDropdown && filteredUsers.length === 0 && !loadingUsers && customerSearch.trim() && (
+                  <div className="absolute right-0 left-0 z-10 mt-1 rounded-md border bg-card shadow-lg p-3 text-sm text-muted-foreground">
+                    לא נמצאו לקוחות תואמים
+                  </div>
+                )}
+                {loadingUsers && (
+                  <div className="absolute right-0 left-0 z-10 mt-1 rounded-md border bg-card shadow-lg p-3 text-sm text-center text-muted-foreground">
+                    <Loader2 className="mx-auto h-4 w-4 animate-spin" />
+                    טוען לקוחות...
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Customer Details (editable after selection) */}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="name">שם הלקוח</Label>
                 <Input
                   id="name"
                   value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
+                  onChange={(e) => {
+                    setCustomerName(e.target.value);
+                    if (selectedUserId) clearSelectedUser();
+                  }}
                   placeholder="ישראל ישראלי"
                 />
               </div>
@@ -238,11 +396,21 @@ export function AdminOrderForm({ onOrderCreated }: Props) {
                   inputMode="tel"
                   dir="ltr"
                   value={customerPhone}
-                  onChange={(e) => setCustomerPhone(e.target.value)}
+                  onChange={(e) => {
+                    setCustomerPhone(e.target.value);
+                    if (selectedUserId) clearSelectedUser();
+                  }}
                   placeholder="050-0000000"
                 />
               </div>
             </div>
+
+            {selectedUserId && (
+              <div className="flex items-center gap-2 rounded-md border border-gold/40 bg-gold/10 p-2 text-sm text-gold-foreground">
+                <UserCheck className="h-4 w-4" />
+                לקוח קיים נבחר — ההזמנה תקושר לחשבון שלו
+              </div>
+            )}
 
             {/* Delivery type */}
             <div className="space-y-2">
@@ -270,7 +438,7 @@ export function AdminOrderForm({ onOrderCreated }: Props) {
                 >
                   משלוח עד הבית
                   <span className="ms-1 rounded-full bg-gold/20 px-1.5 py-0.5 text-xs">
-                    +{formatILS(DELIVERY_FEE)}
+                    +{formatILS(settings.delivery_fee)}
                   </span>
                 </button>
               </div>
@@ -288,20 +456,23 @@ export function AdminOrderForm({ onOrderCreated }: Props) {
               </div>
             )}
 
-            {/* Member toggle */}
-            <div className="flex items-center justify-between rounded-md border border-primary/10 p-3">
+{/* Member toggle */}
+            <div className="flex items-center justify-between rounded-md border border-primary/10 p-3" style={{ opacity: selectedUserId ? 0.6 : 1 }}>
               <div className="space-y-0.5">
                 <Label htmlFor="member" className="cursor-pointer">
                   לקוח קבוע
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  החל תחייב הנחה של {MEMBER_DISCOUNT_PERCENT}% על המוצרים.
+                  {selectedUserId
+                    ? "נקבע אוטומטית לפי היסטוריית ההזמנות של הלקוח"
+                    : `החל תחייב הנחה של ${settings.member_discount_percent}% על המוצרים (מ-${settings.club_discount_threshold ?? 3} הזמנות מושלמות).`}
                 </p>
               </div>
               <Switch
                 id="member"
                 checked={isMember}
-                onCheckedChange={setIsMember}
+                onCheckedChange={selectedUserId ? () => {} : setIsMember}
+                disabled={!!selectedUserId}
               />
             </div>
 
@@ -417,7 +588,7 @@ export function AdminOrderForm({ onOrderCreated }: Props) {
               {isMember && (
                 <div className="mt-1 flex items-center gap-1 text-xs text-gold-foreground">
                   <Sparkles className="h-3 w-3 text-gold" />
-                  הנחת לקוח קבוע {MEMBER_DISCOUNT_PERCENT}%
+                  הנחת לקוח קבוע {settings.member_discount_percent}%
                 </div>
               )}
             </div>

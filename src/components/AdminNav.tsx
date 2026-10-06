@@ -15,6 +15,7 @@ const items = [
   { href: "/admin/messages", label: "הודעות וואצפ" },
   { href: "/admin/stats", label: "סטטיסטיקות" },
   { href: "/admin/expenses", label: "הוצאות" },
+  { href: "/admin/settings", label: "הגדרות" },
 ];
 
 export function AdminNav() {

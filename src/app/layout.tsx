@@ -1,7 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import { ToastProvider } from "@/components/ui/toaster";
 import { VisitTracker } from "@/components/VisitTracker";
+import { AnnouncementBanner } from "@/components/AnnouncementBanner";
 import { StoreModeProvider } from "@/context/StoreModeContext";
+import { SystemSettingsProvider } from "@/context/SystemSettingsContext";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -13,7 +15,8 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 5,
+  maximumScale: 1,
+  userScalable: false,
   themeColor: "#0e6b48",
 };
 
@@ -27,7 +30,10 @@ export default function RootLayout({
       <body className="min-h-screen bg-background font-sans">
         <VisitTracker />
         <StoreModeProvider>
-          <ToastProvider>{children}</ToastProvider>
+          <SystemSettingsProvider>
+            <AnnouncementBanner />
+            <ToastProvider>{children}</ToastProvider>
+          </SystemSettingsProvider>
         </StoreModeProvider>
       </body>
     </html>

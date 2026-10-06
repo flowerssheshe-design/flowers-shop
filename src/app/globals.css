@@ -72,6 +72,40 @@
   select {
     font-size: 16px;
   }
+
+  /* Mobile/touch Safari: force every form control to >=16px so focusing
+     does not trigger the auto-zoom that rescales the whole page. */
+  @media screen and (-webkit-min-device-pixel-ratio: 0),
+    (hover: none) and (pointer: coarse) {
+    input,
+    textarea,
+    select,
+    input[type="text"],
+    input[type="password"],
+    input[type="datetime"],
+    input[type="datetime-local"],
+    input[type="date"],
+    input[type="month"],
+    input[type="time"],
+    input[type="week"],
+    input[type="number"],
+    input[type="email"],
+    input[type="url"],
+    input[type="search"],
+    input[type="tel"],
+    input[type="color"],
+    input[type="file"],
+    input[type="image"],
+    input[type="submit"],
+    input[type="reset"],
+    input[type="button"],
+    input[type="checkbox"],
+    input[type="radio"],
+    input[type="range"],
+    input[type="hidden"] {
+      font-size: 16px !important;
+    }
+  }
 }
 
 @layer utilities {

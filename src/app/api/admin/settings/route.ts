@@ -15,10 +15,17 @@ const SettingsSchema = z.object({
   bit_number: z.string().optional(),
   paybox_number: z.string().optional(),
   whatsapp_number: z.string().optional(),
+  business_phone: z.string().optional(),
   contact_phone: z.string().optional(),
+  business_email: z.string().optional(),
   pickup_address: z.string().optional(),
+  pickup_instructions: z.string().optional(),
   pickup_hours: z.string().optional(),
   business_hours: z.string().optional(),
+  preorder_deadline: z.string().optional(),
+  same_day_deadline: z.string().optional(),
+  announcement_banner_text: z.string().optional(),
+  is_stall_open: z.boolean().optional(),
 });
 
 export async function GET() {

@@ -25,7 +25,7 @@ export async function GET() {
     const admin = createAdminClient();
     const [modeRes, stallRes] = await Promise.all([
       admin.from("store_settings").select("value").eq("key", "mode").single(),
-      admin.from("store_settings").select("value").eq("key", "stall_open").single(),
+      admin.from("system_settings").select("value").eq("key", "is_stall_open").single(),
     ]);
 
     let mode = "preorder";
@@ -41,7 +41,16 @@ export async function GET() {
       const stallValue = stallRes.data.value;
       stall_open = stallValue === true || stallValue === "true";
     } else if (stallRes.error) {
-      console.error("Stall open GET error:", stallRes.error);
+      // Fallback to store_settings.stall_open for backward compatibility
+      const legacyStallRes = await admin
+        .from("store_settings")
+        .select("value")
+        .eq("key", "stall_open")
+        .single();
+      if (!legacyStallRes.error && legacyStallRes.data) {
+        const stallValue = legacyStallRes.data.value;
+        stall_open = stallValue === true || stallValue === "true";
+      }
     }
 
     return NextResponse.json({ mode, stall_open });
@@ -76,8 +85,8 @@ export async function POST(req: Request) {
     try {
       const admin = createAdminClient();
       const { data, error } = await admin
-        .from("store_settings")
-        .upsert({ key: "stall_open", value: stall_open, updated_at: new Date().toISOString() }, { onConflict: "key" })
+        .from("system_settings")
+        .upsert({ key: "is_stall_open", value: stall_open, updated_at: new Date().toISOString() }, { onConflict: "key" })
         .select("value")
         .single();
 

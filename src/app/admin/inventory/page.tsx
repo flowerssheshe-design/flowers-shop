@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useCallback, useState } from "react";
 import Link from "next/link";
@@ -42,6 +42,10 @@ type PreOrderItem = {
   revenue: number;
   profit: number;
 };
+
+function archiveNetProfit(a: WeeklyArchive): number {
+  return a.total_net_profit ?? (a.gross_profit || 0) - (a.total_expenses || 0);
+}
 
 export default function AdminInventoryPage() {
   const [ready, setReady] = useState(false);
@@ -941,7 +945,7 @@ export default function AdminInventoryPage() {
                              <th className="p-3 text-right font-semibold">תאריכים</th>
                              <th className="p-3 text-right font-semibold">הזמנות</th>
                              <th className="p-3 text-right font-semibold">הכנסות</th>
-                             <th className="p-3 text-right font-semibold">רווח גולמי</th>
+                              <th className="p-3 text-right font-semibold">רווח</th>
                              <th className="p-3 text-right font-semibold">הזמנות מוקדמות</th>
                              <th className="p-3 text-right font-semibold">מכירות דוכן</th>
                              <th className="p-3 text-center font-semibold">פעולות</th>
@@ -978,10 +982,10 @@ export default function AdminInventoryPage() {
                                 {formatILS(a.total_revenue || 0)}
                               </td>
                               <td
-                                className={`p-3 tabular-nums font-medium cursor-pointer ${a.gross_profit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-destructive'}`}
+                                className={`p-3 tabular-nums font-medium cursor-pointer ${archiveNetProfit(a) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-destructive'}`}
                                 onClick={() => setSelectedArchive(a)}
                               >
-                                {formatILS(a.gross_profit || 0)}
+                                {formatILS(archiveNetProfit(a))}
                               </td>
                               <td
                                 className="p-3 tabular-nums cursor-pointer"
@@ -1079,7 +1083,7 @@ export default function AdminInventoryPage() {
                           <h3 className="text-sm font-semibold mb-2">סה״כ רווח נטו</h3>
                           <p className="text-xs text-muted-foreground mb-1">רווח גולמי: {formatILS(selectedArchive.gross_profit || 0)}</p>
                           <p className="text-xs text-muted-foreground mb-1">הוצאות: {formatILS(selectedArchive.total_expenses || 0)}</p>
-                          <p className={`text-sm font-medium ${(selectedArchive.total_net_profit || 0) < 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}`}רווח נטו: {formatILS(selectedArchive.total_net_profit || 0)}</p>
+                          <p className={`text-sm font-medium ${(selectedArchive.total_net_profit || 0) < 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}`}>רווח נטו: {formatILS(selectedArchive.total_net_profit || 0)}</p>
                         </div>
                       </div>
 

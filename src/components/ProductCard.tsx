@@ -5,12 +5,9 @@ import { ChevronDown, ChevronUp, Minus, Plus, ShoppingBag, Store, Truck, X } fro
 import { Button } from "@/components/ui/button";
 import { ImageCarousel } from "@/components/ImageCarousel";
 import { formatILS } from "@/lib/utils";
-import {
-  CLUB_DISCOUNT_THRESHOLD,
-  MEMBER_DISCOUNT_PERCENT,
-  type Product,
-} from "@/types";
-import { isPreorderPhase } from "@/lib/cycleTime";
+import { type Product } from "@/types";
+import { useCycleTime } from "@/lib/cycleTime";
+import { useSystemSettings } from "@/lib/useSystemSettings";
 import { useStoreMode } from "@/context/StoreModeContext";
 
 type Props = {
@@ -42,7 +39,8 @@ export function ProductCard({
       )
     : 0;
 
-  const inPreorder = isPreorderPhase();
+  const settings = useSystemSettings();
+  const { isPreorderPhase: inPreorder } = useCycleTime();
   const { mode } = useStoreMode();
   const isRealtimeMode = mode === "realtime";
   const isOutOfStock = isRealtimeMode && (stock <= 0 || product.is_available === false);
@@ -165,13 +163,13 @@ export function ProductCard({
 
         {showMemberPrice ? (
           <p className="text-[11px] leading-snug text-gold-foreground">
-            *הנחת לקוח קבוע של {MEMBER_DISCOUNT_PERCENT}% מוענקת לכם באופן
+            *הנחת לקוח קבוע של {settings.member_discount_percent}% מוענקת לכם באופן
             אוטומטי — {discountPercent}% הנחה על כל הזמנה
           </p>
         ) : (
           <p className="text-[11px] leading-snug text-muted-foreground">
-            *הנחת לקוח קבוע של {MEMBER_DISCOUNT_PERCENT}% זמינה למשתמשים רשומים
-            שביצעו {CLUB_DISCOUNT_THRESHOLD} הזמנות או יותר באתר
+            *הנחת לקוח קבוע של {settings.member_discount_percent}% זמינה למשתמשים רשומים
+            שביצעו {settings.club_discount_threshold} הזמנות או יותר באתר
           </p>
         )}
 
@@ -188,7 +186,9 @@ export function ProductCard({
                 ? "אזל המלאי"
                 : isRealtimeMode
                 ? "הוסף לסל"
-                : "הזמנה מראש"}
+                : inPreorder
+                ? "הזמנה מראש"
+                : "הוסף לסל"}
             </Button>
           ) : (
             <div className="flex items-center justify-between rounded-full border border-primary/20 bg-primary/5 px-2 py-1">
