@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { createClient } from "@/lib/supabase/client";
+import { ImageCarousel } from "@/components/ImageCarousel";
 import { SUPABASE_CONFIGURED, MEMBER_DISCOUNT_PERCENT } from "@/lib/constants";
 import { calculateMemberPrice, calculateDiscountAmount, formatILS } from "@/lib/utils";
 import type { Product } from "@/types";
@@ -20,9 +21,6 @@ type Props = {
   initial?: Product;
   nextSortOrder?: number;
 };
-
-const FALLBACK =
-  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 300'><rect width='400' height='300' fill='%23f3f4f6'/><text x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%239ca3af' font-family='Heebo,sans-serif' font-size='24'>פרחים</text></svg>";
 
 export function ProductForm({ mode, initial, nextSortOrder = 0 }: Props) {
   const router = useRouter();
@@ -42,6 +40,7 @@ export function ProductForm({ mode, initial, nextSortOrder = 0 }: Props) {
         : [],
   );
   const [imageUrlInput, setImageUrlInput] = useState("");
+  const [previewIndex, setPreviewIndex] = useState(0);
   const [isActive, setIsActive] = useState(initial?.is_active ?? true);
   const [sortOrder, setSortOrder] = useState(
     initial?.sort_order ?? nextSortOrder,
@@ -55,6 +54,11 @@ export function ProductForm({ mode, initial, nextSortOrder = 0 }: Props) {
       router.replace("/admin/products");
     }
   }, [initial, mode, router]);
+
+  // Keep the preview on the first slide whenever the gallery changes.
+  useEffect(() => {
+    setPreviewIndex(0);
+  }, [imageUrls]);
 
   const priceMember = calculateMemberPrice(priceStandard, MEMBER_DISCOUNT_PERCENT);
   const discountAmount = calculateDiscountAmount(priceStandard, MEMBER_DISCOUNT_PERCENT);
@@ -251,42 +255,56 @@ export function ProductForm({ mode, initial, nextSortOrder = 0 }: Props) {
              <p className="text-xs text-muted-foreground">
                התמונות להמחשה בלבד
              </p>
-             <div className="relative aspect-[4/3] w-full overflow-hidden rounded-md bg-muted">
-               <Image
-                 src={imageUrls[0] || FALLBACK}
-                 alt="תצוגה מקדימה"
-                 fill
-                 sizes="(max-width: 640px) 100vw, 50vw"
-                 className="object-cover"
-                 unoptimized={!imageUrls[0]}
-               />
-             </div>
-             {imageUrls.length > 1 && (
-               <div className="grid grid-cols-5 gap-2">
-                 {imageUrls.map((url, index) => (
-                   <div
-                     key={`${url}-${index}`}
-                     className="relative aspect-square overflow-hidden rounded-md bg-muted"
-                   >
-                     <Image
-                       src={url}
-                       alt={`תמונה ${index + 1}`}
-                       fill
-                       sizes="100px"
-                       className="object-cover"
-                     />
-                     <button
-                       type="button"
-                       onClick={() => removeImageUrl(index)}
-                       aria-label={`הסר תמונה ${index + 1}`}
-                       className="absolute end-1 top-1 rounded-full bg-background/90 p-1 text-destructive shadow-sm"
-                     >
-                       <Trash2 className="h-3.5 w-3.5" />
-                     </button>
-                   </div>
-                 ))}
-               </div>
-             )}
+              <div className="relative overflow-hidden rounded-md">
+                <ImageCarousel
+                  images={imageUrls}
+                  alt="תצוגה מקדימה"
+                  sizes="(max-width: 640px) 100vw, 50vw"
+                  priority
+                  index={Math.min(previewIndex, Math.max(0, imageUrls.length - 1))}
+                  onIndexChange={setPreviewIndex}
+                  resetKey={imageUrls.join("|")}
+                />
+              </div>
+              {imageUrls.length > 1 && (
+                <div className="grid grid-cols-5 gap-2">
+                  {imageUrls.map((url, index) => (
+                    <div
+                      key={`${url}-${index}`}
+                      className="relative aspect-square overflow-hidden rounded-md bg-muted"
+                    >
+                      <Image
+                        src={url}
+                        alt={`תמונה ${index + 1}`}
+                        fill
+                        sizes="100px"
+                        className="object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          removeImageUrl(index);
+                        }}
+                        aria-label={`הסר תמונה ${index + 1}`}
+                        className="absolute end-1 top-1 rounded-full bg-background/90 p-1 text-destructive shadow-sm"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPreviewIndex(index)}
+                        aria-label={`הצג תמונה ${index + 1}`}
+                        aria-current={index === previewIndex ? "true" : undefined}
+                        className={`absolute inset-0 rounded-md transition-opacity duration-200 ease-out ${
+                          index === previewIndex
+                            ? "ring-2 ring-primary ring-inset"
+                            : "hover:bg-primary/10"
+                        }`}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
              <div>
                <Label htmlFor="url" className="text-xs">
                  או הדביקו קישור לתמונה נוספת

@@ -889,27 +889,12 @@ function CheckoutDialog(props: CheckoutDialogProps) {
               id="co-notes"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="העדפות צבעים וכולי…"
+              placeholder="העדפות צבעים, מכתב ברכה וכו..."
               rows={2}
             />
   ﻿        </div>
         </div>
 
-        {/* Greeting note (coming soon) */}
-        <div className='mt-4 space-y-1.5'>
-          <Label htmlFor='co-greeting' className='text-sm font-medium'>
-            <MessageSquare className='me-1 inline h-3.5 w-3.5' />
-            הוסף מכתב / ברכה לזר
-          </Label>
-          <button
-            type='button'
-            disabled
-            className='flex items-center justify-between rounded-xl border border-primary/15 bg-muted p-3 text-sm text-muted-foreground opacity-70'
-          >
-            <span>   כרטיס ברכה, מכתב לזר</span>
-            <span className='text-xs'>בקרוב</span>
-          </button>
-        </div>
 
         {/* Payment method */}
         <div className='mt-4 space-y-2'>

@@ -44,16 +44,26 @@ export async function POST(request: Request) {
   }
   try {
     const body = await request.json();
-    const { description, amount, category, expense_type } = body;
+    const { description, amount, category, expense_type, expense_date, is_active } = body;
     if (!description?.trim() || typeof amount !== "number" || amount < 0 || !category?.trim() || !expense_type) {
       return NextResponse.json({ error: "נתונים חסרים או לא תקינים" }, { status: 400 });
     }
+    if (expense_type !== "one_time" && expense_type !== "recurring") {
+      return NextResponse.json({ error: "סוג הוצאה לא תקין" }, { status: 400 });
+    }
+    if (expense_date != null && !/^\d{4}-\d{2}-\d{2}$/.test(String(expense_date))) {
+      return NextResponse.json({ error: "תאריך הוצאה לא תקין" }, { status: 400 });
+    }
     const admin = createAdminClient();
+    // expense_date decides which week a one-time expense lands in, so it is
+    // never optional for those; recurring expenses always start at creation.
     const { data, error } = await admin.rpc("add_expense", {
       p_description: description.trim(),
       p_amount: amount,
       p_category: category.trim(),
       p_expense_type: expense_type,
+      p_expense_date: expense_date ?? null,
+      p_is_active: is_active !== false,
     });
     if (error) throw error;
     return NextResponse.json({ id: data });

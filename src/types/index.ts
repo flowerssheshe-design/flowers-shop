@@ -158,6 +158,10 @@ export type WeeklyArchive = {
    stall_profit: number;
    total_supplier_cost: number;
    total_expenses?: number;
+   /** Portion of total_expenses coming from fixed/recurring costs. */
+   recurring_expenses?: number;
+   /** Portion of total_expenses coming from one-time costs. */
+   one_time_expenses?: number;
    total_net_profit: number;
   top_products: TopProduct[];
   product_sales: TopProduct[];
@@ -180,7 +184,14 @@ export type Expense = {
   amount: number;
   category: string;
   expense_type: 'one_time' | 'recurring';
+  /** Date the one-time expense applies to (YYYY-MM-DD). */
+  expense_date?: string | null;
+  /** When the row was created - start point for recurring expenses. */
+  creation_date?: string | null;
+  /** Deactivated recurring expenses stop applying to future weeks. */
+  is_active?: boolean | null;
   created_at: string;
+  updated_at?: string | null;
 };
 
 export type ExpensesSummary = {
@@ -193,6 +204,20 @@ export type AllTimeMetrics = {
   cumulative_gross_profit: number;
   total_expenses: number;
   true_net_profit: number;
+  /** Portion of total_expenses from fixed costs, replicated per week. */
+  recurring_expenses: number;
+  /** Portion of total_expenses from one-time costs. */
+  one_time_expenses: number;
+};
+
+/** Expenses charged to the currently displayed week. */
+export type WeekExpenseMetrics = {
+  /** Fixed costs applied to this week and onward from their start date. */
+  recurring: number;
+  /** One-time costs that fall inside this week. */
+  oneTime: number;
+  /** recurring + oneTime. */
+  total: number;
 };
 
 export type WoWGrowth = {
@@ -239,6 +264,7 @@ export type StatsPayloadExtended = {
   weekStart: string;
   weekEnd: string;
   allTimeMetrics: AllTimeMetrics;
+  weekExpenses: WeekExpenseMetrics;
   bestSellerPreorders: BestSeller | null;
   bestSellerStallSales: BestSeller | null;
   highestSellThrough: SellThrough | null;

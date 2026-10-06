@@ -29,7 +29,7 @@ export function ProductGrid({
 
   return (
     <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-      {products.map((p) => (
+      {products.map((p, i) => (
         <ProductCard
           key={p.id}
           product={p}
@@ -37,6 +37,7 @@ export function ProductGrid({
           onChange={(q) => onQtyChange(p.id, q)}
           qualifiesForMember={qualifiesForMember}
           stock={stockById[p.id] ?? 0}
+          priority={i < 3}
         />
       ))}
     </div>

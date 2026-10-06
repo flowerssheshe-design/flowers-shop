@@ -85,4 +85,14 @@
       transparent 100%
     );
   }
+
+  /* Horizontal scrollers (carousels) keep native momentum + snap but hide the
+     scrollbar chrome so the media edge stays clean. */
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
 }

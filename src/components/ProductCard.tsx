@@ -1,9 +1,9 @@
 ﻿"use client";
 
 import { useEffect, useRef, useState } from "react";
-import Image from "next/image";
-import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Minus, Plus, ShoppingBag, Store, Truck, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Minus, Plus, ShoppingBag, Store, Truck, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ImageCarousel } from "@/components/ImageCarousel";
 import { formatILS } from "@/lib/utils";
 import {
   CLUB_DISCOUNT_THRESHOLD,
@@ -19,12 +19,18 @@ type Props = {
   onChange: (qty: number) => void;
   qualifiesForMember: boolean;
   stock?: number;
+  /** Eagerly preload the cover image (above-the-fold cards only). */
+  priority?: boolean;
 };
 
-const FALLBACK =
-  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 300'><rect width='400' height='300' fill='%23f3f4f6'/><text x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%239ca3af' font-family='Heebo,sans-serif' font-size='24'>פרחים</text></svg>";
-
-export function ProductCard({ product, qty, onChange, qualifiesForMember, stock = 0 }: Props) {
+export function ProductCard({
+  product,
+  qty,
+  onChange,
+  qualifiesForMember,
+  stock = 0,
+  priority = false,
+}: Props) {
   const hasMemberPrice =
     product.price_member > 0 && product.price_member < product.price_standard;
   const showMemberPrice = qualifiesForMember && hasMemberPrice;
@@ -42,7 +48,6 @@ export function ProductCard({ product, qty, onChange, qualifiesForMember, stock 
   const isOutOfStock = isRealtimeMode && (stock <= 0 || product.is_available === false);
 
   const [expanded, setExpanded] = useState(false);
-  const [activeImageIndex, setActiveImageIndex] = useState(0);
   const descRef = useRef<HTMLParagraphElement>(null);
   const [isClamped, setIsClamped] = useState(false);
   const images = product.image_urls?.length
@@ -50,11 +55,6 @@ export function ProductCard({ product, qty, onChange, qualifiesForMember, stock 
     : product.image_url
       ? [product.image_url]
       : [];
-  const activeImage = images[activeImageIndex];
-
-  useEffect(() => {
-    setActiveImageIndex(0);
-  }, [product.id, images.length]);
 
   useEffect(() => {
     const el = descRef.current;
@@ -67,73 +67,13 @@ export function ProductCard({ product, qty, onChange, qualifiesForMember, stock 
 
   return (
     <article className="group flex flex-col overflow-hidden rounded-2xl border border-primary/10 bg-card shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">
-      <div className="relative aspect-[4/3] w-full overflow-hidden bg-cream">
-        {activeImage ? (
-          <Image
-            src={activeImage}
-            alt={`${product.title} תמונה ${activeImageIndex + 1}`}
-            fill
-            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-            className="object-cover transition duration-500 group-hover:scale-105"
-          />
-        ) : (
-          <Image
-            src={FALLBACK}
-            alt={product.title}
-            fill
-            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-            className="object-cover"
-            unoptimized
-          />
-        )}
-
-        {images.length > 1 && (
-          <>
-            <button
-              type="button"
-              onClick={() =>
-                setActiveImageIndex(
-                  (current) =>
-                    (current - 1 + images.length) % images.length,
-                )
-              }
-              aria-label="תמונה קודמת"
-              className="absolute start-2 top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-background/85 text-foreground shadow-md hover:bg-background"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                setActiveImageIndex((current) => (current + 1) % images.length)
-              }
-              aria-label="תמונה הבאה"
-              className="absolute end-2 top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-background/85 text-foreground shadow-md hover:bg-background"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            <div
-              className="absolute bottom-2 start-1/2 z-10 flex -translate-x-1/2 gap-1 rounded-full bg-background/85 p-1"
-              aria-label="בחירת תמונה"
-            >
-              {images.map((image, index) => (
-                <button
-                  key={image}
-                  type="button"
-                  onClick={() => setActiveImageIndex(index)}
-                  aria-label={`תמונה ${index + 1}`}
-                  aria-current={index === activeImageIndex ? "true" : undefined}
-                  className={`h-2 rounded-full transition ${
-                    index === activeImageIndex
-                      ? "w-5 bg-primary"
-                      : "w-2 bg-foreground/40"
-                  }`}
-                />
-              ))}
-            </div>
-          </>
-        )}
-
+      <ImageCarousel
+        images={images}
+        alt={product.title}
+        resetKey={product.id}
+        priority={priority}
+        imageClassName="transition-transform duration-500 ease-out group-hover:scale-105"
+      >
         {/* Out of Stock Overlay */}
         {isOutOfStock && (
           <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-sm rounded-2xl">
@@ -143,7 +83,7 @@ export function ProductCard({ product, qty, onChange, qualifiesForMember, stock 
             </div>
           </div>
         )}
-      </div>
+      </ImageCarousel>
 
       <p className="px-5 pt-2 text-[11px] leading-snug text-muted-foreground">
         התמונות להמחשה בלבד

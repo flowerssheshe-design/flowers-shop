@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { SUPABASE_CONFIGURED } from "@/lib/constants";
 import { requireAdmin } from "@/lib/admin-auth";
 import type { Order, TopProduct, WeeklyArchive } from "@/types";
+import { expensesForWeek, type ExpenseBucket, type WeeklyExpenseBreakdown } from "@/lib/expenses";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,8 +19,14 @@ export const revalidate = 0;
  *   - total_cost / total_supplier_cost = sum of cost prices of sold items
  *   - stall_sales_count = units sold at the stall (inventory-derived)
  *   - total_net_profit = gross_profit - expenses for the archived week
+ *     (fixed/recurring costs apply to every week from their creation week on,
+ *      one-time costs only to their own week - see lib/expenses.ts)
  */
-function recomputeArchive(arc: WeeklyArchive, weekExpenses: number): WeeklyArchive {
+function recomputeArchive(
+  arc: WeeklyArchive,
+  weekExpenses: number,
+  breakdown?: WeeklyExpenseBreakdown,
+): WeeklyArchive {
   const preRev = Number(arc.preorders_revenue || 0);
   const preProf = Number(arc.preorders_profit || 0);
   const preCost = preRev - preProf;
@@ -54,6 +61,8 @@ function recomputeArchive(arc: WeeklyArchive, weekExpenses: number): WeeklyArchi
     total_supplier_cost: totalCost,
     stall_sales_count: stallSalesCount,
     total_expenses: weekExpenses,
+    recurring_expenses: breakdown?.recurring ?? weekExpenses,
+    one_time_expenses: breakdown?.oneTime ?? 0,
     total_net_profit: grossProfit - weekExpenses,
   } as WeeklyArchive;
 }
@@ -79,23 +88,22 @@ export async function GET(req: Request) {
 
     const rawArchives = (archives as WeeklyArchive[] | null) ?? [];
 
-    // Bucket recorded expenses by archive week so each archive's net profit
-    // is gross_profit - expenses incurred during that week.
+    // Bucket expenses per archive week. One-time expenses only land in the
+    // week they were recorded in; fixed/recurring expenses are charged to
+    // every week from their creation week onward.
     const { data: expenseRows } = await admin
       .from("expenses")
-      .select("amount, created_at")
+      .select("amount, expense_type, expense_date, creation_date, created_at, is_active")
       .order("created_at", { ascending: true });
-    const expenses = (expenseRows ?? []) as Array<{ amount: number; created_at: string }>;
+    const expenses = (expenseRows ?? []) as ExpenseBucket[];
 
     const enriched = rawArchives.map((a) => {
-      const ws = new Date(a.week_start);
-      const we = new Date(a.week_end);
-      const weekExpenses = expenses.reduce((sum, e) => {
-        const eAt = new Date(e.created_at);
-        if (eAt >= ws && eAt < we) return sum + Number(e.amount || 0);
-        return sum;
-      }, 0);
-      return recomputeArchive(a, weekExpenses);
+      const weekExpenses = expensesForWeek(
+        expenses,
+        a.week_start,
+        a.week_end,
+      );
+      return recomputeArchive(a, weekExpenses.total, weekExpenses);
     });
 
     let orders: Order[] = [];

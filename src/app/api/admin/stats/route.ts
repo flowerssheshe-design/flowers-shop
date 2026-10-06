@@ -8,7 +8,9 @@ import type {
   SellThrough,
   AllTimeMetrics,
   CustomerSegments,
+  WeekExpenseMetrics,
 } from "@/types";
+import { expensesForWeek, type ExpenseBucket } from "@/lib/expenses";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -57,6 +59,24 @@ function parseAllTimeMetrics(data: unknown): AllTimeMetrics {
     cumulative_gross_profit: Number(row?.cumulative_gross_profit) || 0,
     total_expenses: Number(row?.total_expenses) || 0,
     true_net_profit: Number(row?.true_net_profit) || 0,
+    recurring_expenses: Number(row?.recurring_expenses) || 0,
+    one_time_expenses: Number(row?.one_time_expenses) || 0,
+  };
+}
+
+/**
+ * The all-time expense split mirrors what the weekly reports actually deducted
+ * (see lib/expenses.ts). If the breakdown RPC is unavailable the split is left
+ * at zero rather than guessed, so the headline total stays authoritative.
+ */
+function parseExpenseBreakdown(data: unknown): {
+  recurring_expenses: number;
+  one_time_expenses: number;
+} {
+  const row = getRpcRow(data);
+  return {
+    recurring_expenses: toNumber(row?.total_recurring),
+    one_time_expenses: toNumber(row?.total_one_time),
   };
 }
 
@@ -122,6 +142,11 @@ export async function GET() {
     if (denied) return withNoStoreHeaders(denied);
 
     const { weekStart, weekEnd } = getWeekBounds();
+    const emptyWeekExpenses: WeekExpenseMetrics = {
+      recurring: 0,
+      oneTime: 0,
+      total: 0,
+    };
     const emptyPayload = {
       weekStart,
       weekEnd,
@@ -129,7 +154,10 @@ export async function GET() {
         cumulative_gross_profit: 0,
         total_expenses: 0,
         true_net_profit: 0,
+        recurring_expenses: 0,
+        one_time_expenses: 0,
       },
+      weekExpenses: emptyWeekExpenses,
       bestSellerPreorders: null,
       bestSellerStallSales: null,
       highestSellThrough: null,
@@ -141,10 +169,35 @@ export async function GET() {
     }
 
     const admin = createAdminClient();
-    const { data: allTimeMetricsData, error: allTimeMetricsRpcError } =
-      await admin.rpc("all_time_metrics");
-    if (allTimeMetricsRpcError) {
-      throw allTimeMetricsRpcError;
+    const [allTimeMetricsRes, expenseBreakdownRes, expenseRowsRes] =
+      await Promise.all([
+        admin.rpc("all_time_metrics"),
+        admin.rpc("all_time_expenses_breakdown"),
+        // All expenses, not just this week's: fixed costs created earlier
+        // still apply to the current week.
+        admin
+          .from("expenses")
+          .select("amount, expense_type, expense_date, creation_date, created_at, is_active"),
+      ]);
+
+    if (allTimeMetricsRes.error) {
+      throw allTimeMetricsRes.error;
+    }
+    logRpcError("all_time_expenses_breakdown", expenseBreakdownRes.error);
+    logRpcError("expenses", expenseRowsRes.error);
+
+    const weekExpenses = expensesForWeek(
+      (expenseRowsRes.data ?? []) as ExpenseBucket[],
+      weekStart,
+      weekEnd,
+    );
+
+    const allTimeMetrics = parseAllTimeMetrics(allTimeMetricsRes.data);
+    const breakdown = parseExpenseBreakdown(expenseBreakdownRes.data);
+    // Only trust the split when the RPC reported something.
+    if (breakdown.recurring_expenses || breakdown.one_time_expenses) {
+      allTimeMetrics.recurring_expenses = breakdown.recurring_expenses;
+      allTimeMetrics.one_time_expenses = breakdown.one_time_expenses;
     }
 
     type RpcResult = { data: unknown; error: unknown };
@@ -173,7 +226,12 @@ export async function GET() {
     return jsonNoStore({
       weekStart,
       weekEnd,
-      allTimeMetrics: parseAllTimeMetrics(allTimeMetricsData),
+      allTimeMetrics,
+      weekExpenses: {
+        recurring: weekExpenses.recurring,
+        oneTime: weekExpenses.oneTime,
+        total: weekExpenses.total,
+      },
       bestSellerPreorders: parseBestSeller(bestSellerPreorderResult.data),
       bestSellerStallSales: parseBestSeller(bestSellerStallResult.data),
       highestSellThrough: parseSellThrough(sellThroughResult.data),

@@ -94,7 +94,7 @@ export async function POST(req: Request) {
         notes: custom_price
           ? `מכירה בדוכן - מחיר יחידני: ${custom_price} ₪`
           : "מכירה בדוכן",
-        status: "approved",
+        status: "completed",
         fulfillment_type: "pickup",
         payment_method,
         inventory_deducted: false,

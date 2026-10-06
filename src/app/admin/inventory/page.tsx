@@ -1029,24 +1029,34 @@ export default function AdminInventoryPage() {
                           מחק ארכיון
                         </Button>
                       </div>
-                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
                         <ArchiveSummaryCard
-                          title="סה״כ הכנסות"
+                          title="סהִכ הכנשות"
                           value={formatILS(selectedArchive.total_revenue || 0)}
                           subtitle={`מוצרים ${formatILS(selectedArchive.products_revenue || 0)} · משלוחים ${formatILS(selectedArchive.delivery_revenue || 0)}`}
                         />
                         <ArchiveSummaryCard
-                          title="הזמנות"
+                          title="זהמות"
                           value={String(selectedArchive.orders_count || 0)}
-                          subtitle={`${selectedArchive.pickup_count || 0} איסוף · ${selectedArchive.delivery_count || 0} משלוח`}
+                          subtitle={`${selectedArchive.pickup_count || 0} איסוף · ${selectedArchive.delivery_count || 0} משלוחים`}
                         />
                         <ArchiveSummaryCard
-                          title="רווח גולמי"
+                          title="רוח גולמי"
                           value={formatILS(selectedArchive.gross_profit || 0)}
                           subtitle={`עלות ספקים ${formatILS((selectedArchive.total_cost || selectedArchive.total_supplier_cost || 0))}`}
                         />
                         <ArchiveSummaryCard
-                          title="תאריכים"
+                          title="רוח נטו"
+                          value={formatILS(selectedArchive.total_net_profit || 0)}
+                          subtitle={`רוח גולמי - קבוצות: ${formatILS(selectedArchive.total_expenses || 0)} (קבוצות ${formatILS(selectedArchive.recurring_expenses || 0)} · חד-פעמיות ${formatILS(selectedArchive.one_time_expenses || 0)})`}
+                          valueClassName={
+                            (selectedArchive.total_net_profit || 0) < 0
+                              ? "text-rose-600 dark:text-rose-400"
+                              : "text-emerald-600 dark:text-emerald-400"
+                          }
+                        />
+                        <ArchiveSummaryCard
+                          title="תריצים"
                           value={`${new Date(selectedArchive.week_start).toLocaleDateString("he-IL")} – ${new Date(selectedArchive.week_end).toLocaleDateString("he-IL")}`}
                           subtitle={selectedArchive.week_label ?? ""}
                         />
@@ -1069,7 +1079,7 @@ export default function AdminInventoryPage() {
                           <h3 className="text-sm font-semibold mb-2">סה״כ רווח נטו</h3>
                           <p className="text-xs text-muted-foreground mb-1">רווח גולמי: {formatILS(selectedArchive.gross_profit || 0)}</p>
                           <p className="text-xs text-muted-foreground mb-1">הוצאות: {formatILS(selectedArchive.total_expenses || 0)}</p>
-                          <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400">רווח נטו: {formatILS(selectedArchive.total_net_profit || 0)}</p>
+                          <p className={`text-sm font-medium ${(selectedArchive.total_net_profit || 0) < 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}`}רווח נטו: {formatILS(selectedArchive.total_net_profit || 0)}</p>
                         </div>
                       </div>
 
@@ -1194,17 +1204,19 @@ function ArchiveSummaryCard({
   title,
   value,
   subtitle,
+  valueClassName,
 }: {
   title: string;
   value: string;
   subtitle?: string;
+  valueClassName?: string;
 }) {
   return (
     <div className="rounded-xl border bg-card p-4 shadow-sm">
       <div className="mb-1 text-xs font-medium text-muted-foreground">
         {title}
       </div>
-      <div className="brand-serif text-xl font-bold text-primary">{value}</div>
+      <div className={`brand-serif text-xl font-bold ${valueClassName ?? "text-primary"}`}>{value}</div>
       {subtitle && (
         <p className="mt-1 text-xs text-muted-foreground">{subtitle}</p>
       )}

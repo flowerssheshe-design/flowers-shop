@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SUPABASE_CONFIGURED } from "@/lib/constants";
 import { requireAdmin } from "@/lib/admin-auth";
+import { expensesForWeek, type ExpenseBucket } from "@/lib/expenses";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,11 +47,12 @@ export async function POST() {
       admin
         .from("inventory")
         .select("product_id, live_stock_count, initial_stock_count"),
+      // Every expense is needed, not just this week's: fixed/recurring costs
+      // created in earlier weeks still apply to the week being archived.
       admin
         .from("expenses")
-        .select("amount")
-        .gte("created_at", start.toISOString())
-        .lt("created_at", end.toISOString()),
+        .select("amount, expense_type, expense_date, creation_date, created_at, is_active")
+        .order("created_at", { ascending: true }),
     ]);
 
     if (ordersRes.error) {
@@ -71,11 +73,14 @@ export async function POST() {
     const products = productsRes.data ?? [];
     const inventoryRows = inventoryRes.data ?? [];
 
-    const totalExpenses = (expensesRes.data ?? []).reduce(
-      (sum: number, e: { amount: number | string | null | undefined }) =>
-        sum + Number(e?.amount || 0),
-      0,
+    // Fixed/recurring expenses count in every week from their creation week
+    // on; one-time expenses count only in the week they were recorded in.
+    const weekExpenses = expensesForWeek(
+      expensesRes.data as ExpenseBucket[],
+      start.toISOString(),
+      end.toISOString(),
     );
+    const totalExpenses = weekExpenses.total;
 
     const productMap = new Map<string, { cost_price: number; title: string }>();
     products.forEach((p) => {

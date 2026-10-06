@@ -13,6 +13,8 @@ import {
   Users,
   ShoppingBag,
   Package,
+  Repeat,
+  Wallet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -59,6 +61,7 @@ function parseStatsPayload(payload: unknown): StatsPayloadExtended {
 
   return {
     ...source,
+    weekExpenses: source.weekExpenses ?? { recurring: 0, oneTime: 0, total: 0 },
     allTimeMetrics: {
       cumulative_gross_profit: parseMetric(
         source.allTimeMetrics.cumulative_gross_profit,
@@ -71,6 +74,14 @@ function parseStatsPayload(payload: unknown): StatsPayloadExtended {
       true_net_profit: parseMetric(
         source.allTimeMetrics.true_net_profit,
         "true_net_profit",
+      ),
+      recurring_expenses: parseMetric(
+        source.allTimeMetrics.recurring_expenses ?? 0,
+        "recurring_expenses",
+      ),
+      one_time_expenses: parseMetric(
+        source.allTimeMetrics.one_time_expenses ?? 0,
+        "one_time_expenses",
       ),
     },
   } as StatsPayloadExtended;
@@ -217,18 +228,40 @@ export default function AdminStatsPage() {
                 value={formatILS(data.allTimeMetrics.cumulative_gross_profit)}
                 subtitle="סכום רווח גולמי מכל הסבבים + שבוע נוכחי"
               />
-              <KpiCard
+<KpiCard
                 icon={<Receipt className="h-5 w-5 text-rose-600" />}
                 title="סך כל ההוצאות"
                 value={formatILS(data.allTimeMetrics.total_expenses)}
-                subtitle="חד-פעמיות וקבועות"
+                subtitle={`קבועות ${formatILS(data.allTimeMetrics.recurring_expenses)} · חד-פעמיות ${formatILS(data.allTimeMetrics.one_time_expenses)}`}
               />
               <KpiCard
                 icon={<Target className="h-5 w-5 text-primary" />}
                 title="רווח נקי אמיתי (כל הזמנים)"
                 value={formatILS(data.allTimeMetrics.true_net_profit)}
-                subtitle="רווח גולמי מצטבר פחות סך הוצאות"
+                subtitle="רווח גולמי מצטבר פחת סך ההוצאות"
                 delta={data.allTimeMetrics.true_net_profit >= 0 ? 100 : -100}
+              />
+            </section>
+
+            {/* Current week expenses, split by kind */}
+            <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <KpiCard
+                icon={<Repeat className="h-5 w-5 text-blue-600" />}
+                title="הוצאות קבועות — שבוע נוכחי"
+                value={formatILS(data.weekExpenses.recurring)}
+                subtitle="מחויבות בכל שבוע החל מתאריך ההתחלה"
+              />
+              <KpiCard
+                icon={<Receipt className="h-5 w-5 text-amber-600" />}
+                title="הוצאות חד-פעמיות — שבוע נוכחי"
+                value={formatILS(data.weekExpenses.oneTime)}
+                subtitle="רק אם נפלו בתוך השבוע הנוכחי"
+              />
+              <KpiCard
+                icon={<Wallet className="h-5 w-5 text-rose-600" />}
+                title="סה״כ הוצאות — שבוע נוכחי"
+                value={formatILS(data.weekExpenses.total)}
+                subtitle={`נכנס לחישוב הרווח הנטו של השבוע`}
               />
             </section>
 

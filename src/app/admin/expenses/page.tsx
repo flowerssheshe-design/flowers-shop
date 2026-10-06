@@ -31,6 +31,30 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 
+function todayISO() {
+  const d = new Date();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${month}-${day}`;
+}
+
+/** "YYYY-MM-DD" is parsed as UTC by Date, so format the parts directly. */
+function formatDateOnly(value: string | null | undefined, fallback: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value ?? "");
+  if (!match) return fallback;
+  const [, year, month, day] = match;
+  return new Date(Number(year), Number(month) - 1, Number(day)).toLocaleDateString("he-IL");
+}
+
+const EMPTY_FORM = {
+  description: "",
+  amount: "",
+  category: "",
+  expense_type: "one_time" as "one_time" | "recurring",
+  expense_date: todayISO(),
+  is_active: true,
+};
+
 export default function AdminExpensesPage() {
   const [ready, setReady] = useState(false);
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -43,12 +67,7 @@ export default function AdminExpensesPage() {
   const [error, setError] = useState<string | null>(null);
   const [showExpenseDialog, setShowExpenseDialog] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
-  const [expenseForm, setExpenseForm] = useState({
-    description: "",
-    amount: "",
-    category: "",
-    expense_type: "one_time" as "one_time" | "recurring",
-  });
+  const [expenseForm, setExpenseForm] = useState(EMPTY_FORM);
   const [expenseFormError, setExpenseFormError] = useState<string | null>(null);
   const [submittingExpense, setSubmittingExpense] = useState(false);
 
@@ -86,7 +105,7 @@ export default function AdminExpensesPage() {
 
   function openAddExpense() {
     setEditingExpense(null);
-    setExpenseForm({ description: "", amount: "", category: "", expense_type: "one_time" });
+    setExpenseForm({ ...EMPTY_FORM, expense_date: todayISO() });
     setExpenseFormError(null);
     setShowExpenseDialog(true);
   }
@@ -98,6 +117,8 @@ export default function AdminExpensesPage() {
       amount: String(expense.amount),
       category: expense.category,
       expense_type: expense.expense_type,
+      expense_date: expense.expense_date || todayISO(),
+      is_active: expense.is_active !== false,
     });
     setExpenseFormError(null);
     setShowExpenseDialog(true);
@@ -106,14 +127,14 @@ export default function AdminExpensesPage() {
   function closeExpenseDialog() {
     setShowExpenseDialog(false);
     setEditingExpense(null);
-    setExpenseForm({ description: "", amount: "", category: "", expense_type: "one_time" });
+    setExpenseForm({ ...EMPTY_FORM, expense_date: todayISO() });
     setExpenseFormError(null);
   }
 
   async function submitExpense(e: React.FormEvent) {
     e.preventDefault();
     setExpenseFormError(null);
-    const { description, amount, category, expense_type } = expenseForm;
+    const { description, amount, category, expense_type, expense_date, is_active } = expenseForm;
     if (!description.trim() || !amount || !category.trim()) {
       setExpenseFormError("יש למלא את כל השדות");
       return;
@@ -121,6 +142,10 @@ export default function AdminExpensesPage() {
     const amt = Number(amount);
     if (isNaN(amt) || amt < 0) {
       setExpenseFormError("סכום לא תקין");
+      return;
+    }
+    if (!expense_date) {
+      setExpenseFormError("יש לבחור תאריך");
       return;
     }
     setSubmittingExpense(true);
@@ -132,7 +157,14 @@ export default function AdminExpensesPage() {
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ description, amount: amt, category, expense_type }),
+        body: JSON.stringify({
+          description,
+          amount: amt,
+          category,
+          expense_type,
+          expense_date,
+          is_active: expense_type === "recurring" ? is_active : true,
+        }),
       });
       if (!res.ok) throw new Error(editingExpense ? "עדכון נכשל" : "הוספה נכשלה");
       await load();
@@ -280,7 +312,46 @@ export default function AdminExpensesPage() {
                       <SelectItem value="recurring">קבועה/חוזרת</SelectItem>
                     </SelectContent>
                   </Select>
+                  <p className="text-xs text-muted-foreground">
+                    {expenseForm.expense_type === "recurring"
+                      ? "הוצאה קבועה מחויבת בכל שבוע החל משבוע היצירה שלה ועד היום."
+                      : "הוצאה חד-פעמית מחויבת רק בשבוע שבו התאריך שלה נופל."}
+                  </p>
                 </div>
+                {/* The date drives the weekly report: it is the occurrence date for one-time
+                    expenses and the start date for fixed expenses. */}
+                <div className="space-y-2">
+                  <Label htmlFor="expense_date">
+                    {expenseForm.expense_type === "recurring"
+                      ? "תאריך תחילת ההוצאה הקבועה"
+                      : "תאריך ההוצאה"}
+                  </Label>
+                  <Input
+                    id="expense_date"
+                    type="date"
+                    value={expenseForm.expense_date}
+                    onChange={(e) => setExpenseForm({ ...expenseForm, expense_date: e.target.value })}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {expenseForm.expense_type === "recurring"
+                      ? "ההוצאה תיגרב לכל דוח שבועי החל מהשבוע של תאריך זה ועד היום, גם אם התאריך בעבר."
+                      : "ההוצאה תיגרב רק לדוח השבועי שבו נופל תאריך זה."}
+                  </p>
+                </div>
+                {expenseForm.expense_type === "recurring" && (
+                  <div className="flex items-center gap-2">
+                    <input
+                      id="is_active"
+                      type="checkbox"
+                      checked={expenseForm.is_active}
+                      onChange={(e) =>
+                        setExpenseForm({ ...expenseForm, is_active: e.target.checked })
+                      }
+                      className="h-4 w-4 rounded border-input"
+                    />
+                    <Label htmlFor="is_active">הוצאה פעילה (מחויבת גם בשבועות הבאים)</Label>
+                  </div>
+                )}
                 <DialogFooter className="flex justify-end gap-2">
                   <Button type="button" variant="outline" onClick={closeExpenseDialog} disabled={submittingExpense}>
                     ביטול
@@ -345,10 +416,15 @@ function ExpenseRow({
   onDelete: (id: string) => void;
 }) {
   const isRecurring = expense.expense_type === "recurring";
+  const isActive = expense.is_active !== false;
+  const createdLabel = formatDateOnly(
+    expense.expense_date ?? expense.creation_date ?? expense.created_at,
+    "",
+  );
   return (
     <div className="flex items-center justify-between gap-2 p-3 rounded-lg border bg-muted/30">
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="font-medium truncate">{expense.description}</span>
           <span
             className={`text-xs px-2 py-0.5 rounded-full ${
@@ -358,9 +434,16 @@ function ExpenseRow({
             {isRecurring ? "קבועה" : "חד-פעמית"}
           </span>
           <span className="text-xs text-muted-foreground">{expense.category}</span>
+          {isRecurring && !isActive && (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+              לא פעילה
+            </span>
+          )}
         </div>
         <p className="text-xs text-muted-foreground">
-          {new Date(expense.created_at).toLocaleDateString("he-IL")}
+          {isRecurring
+            ? `פעילה מ־${createdLabel} בכל שבוע`
+            : `תאריך: ${formatDateOnly(expense.expense_date ?? expense.created_at, "")}`}
         </p>
       </div>
       <div className="flex items-center gap-2">
