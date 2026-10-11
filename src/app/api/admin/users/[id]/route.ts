@@ -12,6 +12,7 @@ const PatchSchema = z.object({
   full_name: z.string().min(2).max(100),
   phone: z.string().min(8).max(30).optional().or(z.literal("")),
   address: z.string().max(300).optional().or(z.literal("")),
+  customer_status: z.enum(["regular", "returning"]).optional(),
 });
 
 export async function PATCH(
@@ -39,6 +40,7 @@ export async function PATCH(
         full_name: parsed.data.full_name,
         phone: parsed.data.phone || null,
         address: parsed.data.address || null,
+        customer_status: parsed.data.customer_status ?? "regular",
       })
       .eq("id", id);
     if (error) {

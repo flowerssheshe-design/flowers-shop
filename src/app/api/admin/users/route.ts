@@ -28,7 +28,7 @@ export async function GET() {
 
     const { data: profiles, error: profileError } = await admin
       .from("profiles")
-      .select("id, full_name, phone, address, notification_opt_in, created_at");
+      .select("id, full_name, phone, address, notification_opt_in, customer_status, created_at");
     if (profileError) {
       return NextResponse.json(
         { error: "טעינת פרופילים נכשלה" },
@@ -44,6 +44,7 @@ export async function GET() {
           phone: p.phone,
           address: p.address,
           notification_opt_in: p.notification_opt_in,
+          customer_status: p.customer_status ?? "regular",
           created_at: p.created_at,
         },
       ]),
@@ -79,6 +80,7 @@ export async function GET() {
         phone: prof?.phone ?? null,
         address: prof?.address ?? null,
         notification_opt_in: prof?.notification_opt_in ?? null,
+        customer_status: prof?.customer_status ?? "regular",
         created_at: prof?.created_at ?? u.created_at ?? null,
         order_count: counts.orders,
         completed_count: counts.completed,

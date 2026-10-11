@@ -26,6 +26,9 @@ export const BUSINESS_EMAIL =
 export const BUSINESS_HOURS =
   process.env.NEXT_PUBLIC_BUSINESS_HOURS ?? "ראשון-חמישי 08:00-18:00, שישי 09:00-14:00";
 
+export const SITE_URL =
+  process.env.NEXT_PUBLIC_SITE_URL ?? "https://flowers-from-the-heart.netlify.app";
+
 export const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 export const SUPABASE_ANON_KEY =
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Bell, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -170,6 +171,17 @@ export function LoginDialog({
                 required
               />
             </div>
+
+            {mode === "login" && (
+              <div className="text-center">
+                <Link
+                  href="/forgot-password"
+                  className="text-xs font-medium text-primary hover:underline"
+                >
+                  שכחתי סיסמה?
+                </Link>
+              </div>
+            )}
 
             {mode === "register" && (
               <label

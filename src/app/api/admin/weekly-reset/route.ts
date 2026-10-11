@@ -19,6 +19,18 @@ function getPreviousWeekBounds() {
   return { start, end };
 }
 
+/**
+ * Stall POS / quick stall sales are orders created by the stall sale
+ * endpoint: their notes contain "מכירה בדוכן" or their customer name is
+ * "לקוח דוכן" (and they carry no customer phone).
+ */
+function isStallSaleOrder(order: any): boolean {
+  const notes = typeof order.notes === "string" ? order.notes : "";
+  const customerName =
+    typeof order.customer_name === "string" ? order.customer_name : "";
+  return notes.includes("מכירה בדוכן") || customerName.trim() === "לקוח דוכן";
+}
+
 export async function POST() {
   const denied = requireAdmin();
   if (denied) return denied;
@@ -397,7 +409,16 @@ export async function POST() {
 
     const finalArchive = archive;
 
-    const archiveIds = allActiveOrders.map((o) => o.id);
+    // Archive the week's web orders AND stall POS sales. Stall sales
+    // ("מכירה בדוכן" / "לקוח דוכן") have no customer phone, so they were
+    // previously skipped here and kept cluttering the active orders list
+    // after the cycle was archived.
+    const weekStallIds = orders
+      .filter((o) => o.status !== "archived" && isStallSaleOrder(o))
+      .map((o) => o.id);
+    const archiveIds = Array.from(
+      new Set([...allActiveOrders.map((o) => o.id), ...weekStallIds]),
+    );
     if (archiveIds.length > 0) {
       const { error: updateError } = await admin
         .from("orders")
@@ -409,6 +430,47 @@ export async function POST() {
           { status: 500 },
         );
       }
+    }
+
+    // Best-effort cleanup of stall sales left behind by earlier cycles
+    // (before this fix). Only rows strictly older than the archived week
+    // are touched, so stall sales of the new week stay active.
+    try {
+      const weekStartIso = start.toISOString();
+      const [notesRes, nameRes] = await Promise.all([
+        admin
+          .from("orders")
+          .select("id")
+          .lt("created_at", weekStartIso)
+          .neq("status", "archived")
+          .neq("status", "cancelled")
+          .ilike("notes", "%מכירה בדוכן%"),
+        admin
+          .from("orders")
+          .select("id")
+          .lt("created_at", weekStartIso)
+          .neq("status", "archived")
+          .neq("status", "cancelled")
+          .eq("customer_name", "לקוח דוכן"),
+      ]);
+      const legacyIds = new Set<string>();
+      for (const row of (notesRes.data ?? []) as { id: string }[]) {
+        legacyIds.add(row.id);
+      }
+      for (const row of (nameRes.data ?? []) as { id: string }[]) {
+        legacyIds.add(row.id);
+      }
+      if (legacyIds.size > 0) {
+        const { error: sweepError } = await admin
+          .from("orders")
+          .update({ status: "archived" })
+          .in("id", Array.from(legacyIds));
+        if (sweepError) {
+          console.error("Stall sales cleanup error:", sweepError);
+        }
+      }
+    } catch (sweepErr) {
+      console.error("Stall sales cleanup failed:", sweepErr);
     }
 
     const { data: activeProducts, error: productsError } = await admin

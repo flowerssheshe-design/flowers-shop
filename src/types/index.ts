@@ -73,12 +73,15 @@ export type SupplierAggregate = {
   total_qty: number;
 };
 
+export type CustomerStatus = "regular" | "returning";
+
 export type Profile = {
   id: string;
   full_name: string | null;
   phone: string | null;
   address: string | null;
   notification_opt_in: boolean;
+  customer_status: CustomerStatus;
   created_at: string;
   updated_at: string;
 };
@@ -99,6 +102,7 @@ export type AdminUser = {
   phone: string | null;
   address: string | null;
   notification_opt_in: boolean | null;
+  customer_status: CustomerStatus;
   created_at: string | null;
   order_count: number;
   completed_count: number;

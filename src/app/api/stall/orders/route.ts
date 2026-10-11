@@ -27,8 +27,8 @@ export async function GET() {
       .from("orders")
       .select("*")
       .neq("status", "archived")
-      .eq("status", "approved")
-      .eq("delivery_type", "pickup")
+      .in("status", ["approved", "completed"])
+      .in("delivery_type", ["pickup", "delivery"])
       .order("created_at", { ascending: false });
     if (error) {
       return NextResponse.json(

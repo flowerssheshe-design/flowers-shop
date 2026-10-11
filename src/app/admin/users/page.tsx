@@ -19,6 +19,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -31,7 +38,7 @@ import {
 import { AdminNav } from "@/components/AdminNav";
 import { formatILS } from "@/lib/utils";
 import { CLUB_DISCOUNT_THRESHOLD } from "@/lib/constants";
-import type { AdminUser } from "@/types";
+import type { AdminUser, CustomerStatus } from "@/types";
 
 export default function AdminUsersPage() {
   const [ready, setReady] = useState(false);
@@ -85,7 +92,10 @@ export default function AdminUsersPage() {
     }
   }
 
-  async function saveEdit(u: AdminUser, fields: { full_name: string; phone: string; address: string }) {
+  async function saveEdit(
+    u: AdminUser,
+    fields: { full_name: string; phone: string; address: string; customer_status: CustomerStatus },
+  ) {
     setSaving(true);
     setError(null);
     try {
@@ -218,44 +228,43 @@ export default function AdminUsersPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((u) => {
-                  const isMember =
-                    (u.completed_count ?? 0) >= CLUB_DISCOUNT_THRESHOLD;
-                  return (
-                    <tr key={u.id} className="border-t align-top">
-                      <td className="p-3">
-                        <div className="font-medium">
-                          {u.full_name || "—"}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {u.created_at
-                            ? new Date(u.created_at).toLocaleDateString("he-IL")
-                            : "—"}
-                        </div>
-                      </td>
-                      <td className="p-3" dir="ltr">
-                        {u.email || "—"}
-                      </td>
-                      <td className="p-3" dir="ltr">
-                        {u.phone || "—"}
-                      </td>
-                      <td className="p-3 max-w-[14rem]">
-                        <div className="truncate" title={u.address ?? ""}>
-                          {u.address || "—"}
-                        </div>
-                      </td>
-                      <td className="p-3">
-                        {isMember ? (
-                          <span className="inline-flex items-center gap-1 rounded-full border border-gold/40 bg-gold/10 px-2 py-0.5 text-xs font-medium text-gold-foreground">
-                            <Sparkles className="h-3 w-3 text-gold" />
-                            לקוח קבוע
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 rounded-full border border-muted bg-muted/30 px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                            רגיל
-                          </span>
-                        )}
-                      </td>
+{filtered.map((u) => {
+                    const isReturning = u.customer_status === "returning";
+                    return (
+                      <tr key={u.id} className="border-t align-top">
+                        <td className="p-3">
+                          <div className="font-medium">
+                            {u.full_name || "—"}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {u.created_at
+                              ? new Date(u.created_at).toLocaleDateString("he-IL")
+                              : "—"}
+                          </div>
+                        </td>
+                        <td className="p-3" dir="ltr">
+                          {u.email || "—"}
+                        </td>
+                        <td className="p-3" dir="ltr">
+                          {u.phone || "—"}
+                        </td>
+                        <td className="p-3 max-w-[14rem]">
+                          <div className="truncate" title={u.address ?? ""}>
+                            {u.address || "—"}
+                          </div>
+                        </td>
+                        <td className="p-3">
+                          {isReturning ? (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-gold/40 bg-gold/10 px-2 py-0.5 text-xs font-medium text-gold-foreground">
+                              <Sparkles className="h-3 w-3 text-gold" />
+                              לקוח קבוע
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-muted bg-muted/30 px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                              רגיל
+                            </span>
+                          )}
+                        </td>
                       <td className="p-3">
                         <div className="font-medium tabular-nums">
                           {u.order_count} הזמנות
@@ -367,12 +376,13 @@ function EditUserDialog({
   onClose: () => void;
   onSave: (
     u: AdminUser,
-    fields: { full_name: string; phone: string; address: string },
+    fields: { full_name: string; phone: string; address: string; customer_status: CustomerStatus },
   ) => void;
 }) {
   const [fullName, setFullName] = useState(user.full_name ?? "");
   const [phone, setPhone] = useState(user.phone ?? "");
   const [address, setAddress] = useState(user.address ?? "");
+  const [customerStatus, setCustomerStatus] = useState<CustomerStatus>(user.customer_status ?? "regular");
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
@@ -407,6 +417,21 @@ function EditUserDialog({
               rows={2}
             />
           </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="customer_status">סטטוס לקוח</Label>
+            <Select
+              value={customerStatus}
+              onValueChange={(v) => setCustomerStatus(v as CustomerStatus)}
+            >
+              <SelectTrigger id="customer_status">
+                <SelectValue placeholder="בחר סטטוס" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="regular">רגיל</SelectItem>
+                <SelectItem value="returning">קבוע</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         <div className="flex justify-end gap-2 border-t p-3">
           <Button variant="ghost" size="sm" onClick={onClose} disabled={saving}>
@@ -420,6 +445,7 @@ function EditUserDialog({
                 full_name: fullName.trim(),
                 phone: phone.trim(),
                 address: address.trim(),
+                customer_status: customerStatus,
               })
             }
             disabled={saving || fullName.trim().length < 2}

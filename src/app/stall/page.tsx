@@ -11,6 +11,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogClose,
 } from "@/components/ui/dialog";
 import { formatILS } from "@/lib/utils";
 import { useToast } from "@/components/ui/toaster";
@@ -30,10 +31,13 @@ export default function StallPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [inventory, setInventory] = useState<Inventory[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'selfPickup' | 'liveSales'>('liveSales');
+  const [activeTab, setActiveTab] = useState<'selfPickup' | 'delivery' | 'liveSales'>('liveSales');
   const [selfOrders, setSelfOrders] = useState<Order[]>([]);
+  const [deliveryOrders, setDeliveryOrders] = useState<Order[]>([]);
   const [searchName, setSearchName] = useState('');
   const [searchPhone, setSearchPhone] = useState('');
+  const [deliverySearchName, setDeliverySearchName] = useState('');
+  const [deliverySearchPhone, setDeliverySearchPhone] = useState('');
 
   const [deductDialogOpen, setDeductDialogOpen] = useState(false);
   const [deductProduct, setDeductProduct] = useState<Product | null>(null);
@@ -64,7 +68,9 @@ export default function StallPage() {
       }
       if (ordersRes.ok) {
         const data = await ordersRes.json();
-        setSelfOrders(data.orders ?? []);
+        const orders = (data.orders ?? []) as Order[];
+        setSelfOrders(orders.filter(o => o.delivery_type === 'pickup'));
+        setDeliveryOrders(orders.filter(o => o.delivery_type === 'delivery'));
       }
     } catch (e) {
       console.error(e);
@@ -175,6 +181,137 @@ export default function StallPage() {
     return nameMatch && phoneMatch;
   });
 
+  const filteredDeliveryOrders = deliveryOrders.filter((order) => {
+    const nameMatch = order.customer_name?.toLowerCase().includes(deliverySearchName.toLowerCase());
+    const phoneMatch = order.customer_phone?.toLowerCase().includes(deliverySearchPhone.toLowerCase());
+    return nameMatch && phoneMatch;
+  });
+
+  const getPaymentMethodLabel = (method?: string) => {
+    switch (method) {
+      case 'bit': return 'ביט';
+      case 'paybox': return 'PayBox';
+      case 'cash': return 'מזומן';
+      default: return '—';
+    }
+  };
+
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case 'approved': return 'מאושר';
+      case 'completed': return 'הושלם';
+      case 'pending_payment': return 'ממתין לתשלום';
+      case 'cancelled': return 'בוטל';
+      default: return status;
+    }
+  };
+
+  const handleOrderStatusChange = async (order: Order, newStatus: string) => {
+    try {
+      const res = await fetch(`/api/admin/orders/${order.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error ?? "לא הצליח לעדכן את ההזמנה");
+        return;
+      }
+      // Update both lists
+      setSelfOrders((prev) =>
+        prev.map((o) => (o.id === order.id ? { ...o, status: newStatus as Order['status'] } : o))
+      );
+      setDeliveryOrders((prev) =>
+        prev.map((o) => (o.id === order.id ? { ...o, status: newStatus as Order['status'] } : o))
+      );
+      notifySync();
+      toast({
+        title: newStatus === 'completed' ? "ההזמנה סומנה כהושלמה" : "ההזמנה הוחזרה לפעילה",
+        variant: "success",
+      });
+    } catch (e) {
+      console.error(e);
+      alert(e instanceof Error ? e.message : "שגיאה בעדכון ההזמנה");
+    }
+  };
+
+  const renderOrderCard = (
+    order: Order,
+    ordersType: 'selfPickup' | 'delivery',
+    isDeliveryTab: boolean
+  ) => {
+    const isCompleted = order.status === 'completed';
+    const canModify = ordersType === 'selfPickup'; // Only self-pickup can be modified
+
+    return (
+      <div key={order.id} className="rounded-xl border bg-card p-4 shadow-sm hover:shadow-md transition-all">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <p className="font-semibold text-foreground truncate">{order.customer_name}</p>
+              <span className="inline-flex items-center rounded-full bg-emerald-100 dark:bg-emerald-900/30 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+                {order.delivery_type === 'pickup' ? 'איסוף עצמי' : 'משלוח'}
+              </span>
+              <span className="inline-flex items-center rounded-full bg-blue-100 dark:bg-blue-900/30 px-2 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-300">
+                {getStatusLabel(order.status)}
+              </span>
+            </div>
+            <p className="text-sm text-muted-foreground">{order.customer_phone}</p>
+            <p className="text-sm font-medium text-foreground mt-1">
+              סכום: <span className="tabular-nums">{formatILS(order.total_amount)}</span>
+            </p>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              {order.items?.map((item) => `${item.title} (${item.qty})`).join(", ")}
+            </p>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              שיטת תשלום: <span className="font-medium text-foreground">{getPaymentMethodLabel(order.payment_method)}</span>
+            </p>
+            {order.notes && (
+              <p className="text-sm text-muted-foreground mt-0.5">
+                הערות: <span className="font-medium text-foreground">{order.notes}</span>
+              </p>
+            )}
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {canModify && isCompleted && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleOrderStatusChange(order, 'approved')}
+                className="border-amber-300 text-amber-700 hover:bg-amber-50"
+              >
+                <RefreshCw className="h-4 w-4 ms-1.5" />
+                בטל אישור
+              </Button>
+            )}
+            {canModify && !isCompleted && (
+              <Button
+                size="sm"
+                onClick={async () => {
+                  await handleOrderStatusChange(order, 'completed');
+                }}
+                className="shrink-0"
+              >
+                <CheckCircle2 className="h-4 w-4 ms-1.5" />
+                הושלם (נאסוף / נשלח)
+              </Button>
+            )}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => openOrderDetail(order)}
+              className="shrink-0"
+            >
+              <Eye className="h-4 w-4 ms-1.5" />
+              צפייה
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <PinAuthGate pinRole="STALL">
       <main className="min-h-screen bg-gradient-to-b from-background to-muted/30 p-4" dir="rtl">
@@ -217,7 +354,18 @@ export default function StallPage() {
               }`}
             >
               <CheckCircle2 className="h-4 w-4" />
-              ניהול איסוף עצמי
+              איסוף עצמי
+            </button>
+            <button
+              onClick={() => setActiveTab('delivery')}
+              className={`inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-all ${
+                activeTab === 'delivery'
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <MapPin className="h-4 w-4" />
+              הזמנות למשלוח
             </button>
             <button
               onClick={() => setActiveTab('liveSales')}
@@ -266,52 +414,59 @@ export default function StallPage() {
               {filteredSelfOrders.length === 0 ? (
                 <div className="rounded-xl border bg-card p-10 text-center shadow-sm">
                   <CheckCircle2 className="h-10 w-10 mx-auto text-muted-foreground/50 mb-3" />
-                  <p className="text-muted-foreground text-sm">                  לא נמצאו הזמנות איסוף עצמי התואמות לחיפוש.</p>
+                  <p className="text-muted-foreground text-sm">לא נמצאו הזמנות איסוף עצמי התואמות לחיפוש.</p>
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {filteredSelfOrders.map((order) => (
-                    <div key={order.id} className="rounded-xl border bg-card p-4 shadow-sm hover:shadow-md transition-all">
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <p className="font-semibold text-foreground truncate">{order.customer_name}</p>
-                            <span className="inline-flex items-center rounded-full bg-emerald-100 dark:bg-emerald-900/30 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">
-                              איסוף עצמי
-                            </span>
-                          </div>
-                          <p className="text-sm text-muted-foreground">{order.customer_phone}</p>
-                          <p className="text-sm font-medium text-foreground mt-1">
-                            סכום: <span className="tabular-nums">{formatILS(order.total_amount)}</span>
-                          </p>
-                          <p className="text-sm text-muted-foreground mt-0.5">
-                            {order.items?.map((item) => `${item.title} (${item.qty})`).join(", ")}
-                          </p>
-                        </div>
-                        <Button
-                          size="sm"
-                          onClick={async () => {
-                              const res = await fetch(`/api/admin/orders/${order.id}`, {
-                                method: "PATCH",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ status: "completed" }),
-                              });
-                              if (!res.ok) {
-                                const err = await res.json().catch(() => ({}));
-                                alert(err.error ?? "לא הצליח לעדכן את ההזמנה");
-                                return;
-                              }
-                              setSelfOrders((prev) => prev.filter((o) => o.id !== order.id));
-                              notifySync();
-                            }}
-                          className="shrink-0"
-                        >
-                           <CheckCircle2 className="h-4 w-4 ms-1.5" />
-                           דווח כנאסף
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
+                  {filteredSelfOrders.map((order) =>
+                    renderOrderCard(order, 'selfPickup', false)
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'delivery' && (
+            <div className="space-y-4">
+              <div className="rounded-xl border bg-card p-4 shadow-sm">
+                <div className="flex items-center gap-2 mb-3">
+                  <Search className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium text-muted-foreground">חיפוש הזמנות</span>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="deliverySearchName" className="text-xs font-medium text-muted-foreground">חיפוש לפי שם</Label>
+                    <Input
+                      id="deliverySearchName"
+                      value={deliverySearchName}
+                      onChange={(e) => setDeliverySearchName(e.target.value)}
+                      placeholder="הזן שם לקוח"
+                      className="h-9"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="deliverySearchPhone" className="text-xs font-medium text-muted-foreground">חיפוש לפי טלפון</Label>
+                    <Input
+                      id="deliverySearchPhone"
+                      value={deliverySearchPhone}
+                      onChange={(e) => setDeliverySearchPhone(e.target.value)}
+                      placeholder="הזן טלפון"
+                      className="h-9"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {filteredDeliveryOrders.length === 0 ? (
+                <div className="rounded-xl border bg-card p-10 text-center shadow-sm">
+                  <MapPin className="h-10 w-10 mx-auto text-muted-foreground/50 mb-3" />
+                  <p className="text-muted-foreground text-sm">לא נמצאו הזמנות משלוח התואמות לחיפוש.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {filteredDeliveryOrders.map((order) =>
+                    renderOrderCard(order, 'delivery', true)
+                  )}
                 </div>
               )}
             </div>

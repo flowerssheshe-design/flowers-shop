@@ -90,24 +90,32 @@ export function Storefront({
   const [paymentMethod, setPaymentMethod] = useState<"bit" | "paybox" | "cash" | "">("");
   const [greetingNote, setGreetingNote] = useState("");
 
-  // Stall status toast state — persistent until user dismisses
+  // Stall status toast state — hidden only for the current render session.
+  // The toast always reappears on every page refresh; dismissal is
+  // in-session only and never persisted to storage.
   const [showStallToast, setShowStallToast] = useState(false);
   const [prevStallOpen, setPrevStallOpen] = useState(isStallOpen);
   const isInitialLoadRef = useRef(true);
 
-  // Show toast when stall status changes (but not on initial load).
-  // The toast stays visible until the user clicks the X button.
   useEffect(() => {
     if (isInitialLoadRef.current) {
       isInitialLoadRef.current = false;
+      // On initial load (including page refresh), always show the toast.
+      setShowStallToast(true);
       setPrevStallOpen(isStallOpen);
       return;
     }
+    // When the stall status changes (e.g. from the admin panel), show the
+    // toast again regardless of prior state.
     if (!storeModeLoading && prevStallOpen !== isStallOpen) {
       setShowStallToast(true);
       setPrevStallOpen(isStallOpen);
     }
   }, [isStallOpen, storeModeLoading, prevStallOpen]);
+
+  function dismissStallToast() {
+    setShowStallToast(false);
+  }
 
   // Fetch inventory for stock display in Live Sale mode
   useEffect(() => {
@@ -619,9 +627,9 @@ export function Storefront({
           setPaymentMethod={setPaymentMethod}
          />
        </Dialog>
-      {/* Stall Status Toast - Bottom */}
+      {/* Stall Status Badge - Top-Right (floating) */}
       {showStallToast && !storeModeLoading && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 animate-slide-up" role="status" aria-live="polite">
+        <div className="fixed top-28 right-4 z-40 animate-slide-down" role="status" aria-live="polite">
           <div
             className={`inline-flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-medium shadow-lg backdrop-blur-sm border transition-all ${
               isStallOpen
@@ -631,10 +639,10 @@ export function Storefront({
           >
             <span className="text-lg" aria-hidden="true">{isStallOpen ? "🏪" : "🔒"}</span>
             <span>
-              {isStallOpen ? "הדוכן נפתח! בואו לבקר" : "הדוכן נסגר — הזמנות מראש בלבד"}
+              {isStallOpen ? "הדוכן נפתח! בואו לבקר" : "דוכן סגור — הזמנות מראש בלבד"}
             </span>
             <button
-              onClick={() => setShowStallToast(false)}
+              onClick={dismissStallToast}
               className="ml-2 flex shrink-0 items-center justify-center rounded-full bg-black/10 dark:bg-white/10 p-2.5 transition hover:bg-black/20 dark:hover:bg-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/40"
               aria-label="סגור"
               style={{ minHeight: 44, minWidth: 44 }}
@@ -645,18 +653,18 @@ export function Storefront({
         </div>
       )}
       <style jsx>{`
-        @keyframes slide-up {
+        @keyframes slide-down {
           from {
             opacity: 0;
-            transform: translate(-50%, 100%);
+            transform: translateY(-100%);
           }
           to {
             opacity: 1;
-            transform: translate(-50%, 0);
+            transform: translateY(0);
           }
         }
-        .animate-slide-up {
-          animation: slide-up 0.3s ease-out forwards;
+        .animate-slide-down {
+          animation: slide-down 0.3s ease-out forwards;
         }
       `}</style>
     </main>

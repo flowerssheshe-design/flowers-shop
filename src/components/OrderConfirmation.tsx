@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { buildBitLink, buildWhatsAppLink, formatILS, isBitUrl } from "@/lib/utils";
+import { SITE_URL } from "@/lib/constants";
 import { useSystemSettings } from "@/lib/useSystemSettings";
 import type { Order } from "@/types";
 import {
@@ -104,6 +105,9 @@ export function OrderConfirmation({
     order.delivery_type === "delivery"
       ? `*משלוח:* ${order.delivery_address ?? ""}`
       : `*איסוף עצמי:* ${settings.pickup_address ?? ""}`,
+    order.delivery_type === "pickup" && settings.pickup_hours
+      ? `*שעות איסוף:* ${settings.pickup_hours}`
+      : "",
     ``,
     `*סה"כ:* *${formatILS(order.total_amount)}*`,
     `שילמתי ב-${
@@ -113,7 +117,10 @@ export function OrderConfirmation({
           ? "פייבוקס"
           : "מזומן"
     } / ממתין לאישור`,
-  ].join("\n");
+    ``,
+    `קישור לאתר:${SITE_URL}`,
+  ]
+    .join("\n");
 
   const waLink = buildWhatsAppLink(settings.whatsapp_number ?? "", waMsg);
   const bitLink =
