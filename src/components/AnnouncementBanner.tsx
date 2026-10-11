@@ -50,14 +50,14 @@ export function AnnouncementBanner() {
       aria-live="polite"
     >
       <div className="container relative flex flex-col items-center py-6 px-6 text-center">
-        <p className="text-lg sm:text-xl font-bold text-center">
+        <p className="text-lg sm:text-xl font-bold text-center pr-16">
           {text}
         </p>
         <button
           type="button"
           onClick={handleClose}
           aria-label="סגור"
-          className="absolute top-3 right-4 flex items-center justify-center rounded-full p-1.5 text-white/80 transition-colors hover:text-white hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#5c6846] min-w-10 min-h-10"
+          className="absolute top-3 right-4 flex items-center justify-center rounded-full p-2.5 text-white/80 transition-colors hover:text-white hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#5c6846] min-w-11 min-h-11"
         >
           <X className="h-5 w-5" aria-hidden="true" />
         </button>

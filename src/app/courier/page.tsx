@@ -14,10 +14,19 @@ export default function CourierPage() {
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<string | null>(null);
 
+  const handleAuthError = () => {
+    document.cookie = "flowers_courier_auth=; Path=/; Max-Age=0; SameSite=Lax";
+    window.location.reload();
+  };
+
   async function load() {
     setLoading(true);
     try {
       const res = await fetch("/api/courier/orders");
+      if (res.status === 401) {
+        handleAuthError();
+        return;
+      }
       if (res.ok) {
         const data = await res.json();
         setOrders(data.orders ?? []);
@@ -39,6 +48,10 @@ export default function CourierPage() {
       const res = await fetch(`/api/courier/orders/${orderId}`, {
         method: "PATCH",
       });
+      if (res.status === 401) {
+        handleAuthError();
+        return;
+      }
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error ?? "שגיאה בעדכון הסטטוס");

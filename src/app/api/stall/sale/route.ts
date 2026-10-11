@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SUPABASE_CONFIGURED } from "@/lib/constants";
-import { requireAdmin } from "@/lib/admin-auth";
+import { requireAdminOrStall } from "@/lib/admin-auth";
 import { getStoreMode, isRealtimeMode } from "@/lib/storeMode";
 
 export const runtime = "nodejs";
@@ -17,7 +17,7 @@ const SaleSchema = z.object({
 });
 
 export async function POST(req: Request) {
-  const denied = requireAdmin();
+  const denied = requireAdminOrStall();
   if (denied) return denied;
   if (!SUPABASE_CONFIGURED) {
     return NextResponse.json(

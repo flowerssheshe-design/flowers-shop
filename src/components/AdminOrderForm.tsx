@@ -13,6 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogClose,
 } from "@/components/ui/dialog";
 import { useSystemSettings } from "@/lib/useSystemSettings";
 import { calculateMemberPrice, formatILS } from "@/lib/utils";
@@ -276,19 +277,26 @@ async function submit() {
 
   return (
     <>
-      <Dialog open={open} onOpenChange={setOpen}>
+<Dialog open={open} onOpenChange={setOpen}>
         <DialogTrigger asChild>
           <Button size="sm" className="rounded-full">
             <Plus className="h-4 w-4 ms-1.5" />
             הוסף הזמנה
           </Button>
         </DialogTrigger>
-        <DialogContent className="w-full max-w-2xl p-0">
-          <DialogHeader>
-            <DialogTitle className="text-xl">הזמנה חדשה מהדוכן</DialogTitle>
-          </DialogHeader>
-
-<div className="max-h-[80vh] space-y-4 overflow-y-auto px-1 pb-2">
+        <DialogContent 
+          showDefaultClose={false}
+          className="fixed left-0 right-0 bottom-0 top-auto z-[70] w-full max-w-md mx-auto sm:top-1/2 sm:bottom-auto sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:-translate-y-1/2 sm:max-w-2xl sm:rounded-xl sm:shadow-xl border border-stone-200 bg-background p-0 gap-0 overflow-hidden"
+        >
+          <div className="sticky top-0 z-10 flex items-center justify-between gap-2 p-4 border-b border-stone-200 bg-stone-50/50 sm:rounded-t-xl">
+            <DialogTitle className="text-xl font-semibold text-center text-stone-800 flex-1">
+              הזמנה חדשה מהדוכן
+            </DialogTitle>
+            <DialogClose className="flex items-center justify-center w-10 h-10 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-600 hover:text-stone-900 transition-colors shrink-0" aria-label="סגור">
+              <X className="h-5 w-5" />
+            </DialogClose>
+          </div>
+          <div className="max-h-[calc(100vh-120px)] sm:max-h-[80vh] space-y-4 overflow-y-auto px-4 sm:px-1 pb-4">
             {/* Customer Search */}
             <div className="space-y-2">
               <Label>לקוח</Label>
@@ -499,13 +507,13 @@ async function submit() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {items.map((it, index) => {
+{items.map((it, index) => {
                     const product = productById.get(it.productId);
                     const lineTotal = itemPrice(product) * it.qty;
                     return (
                       <div
                         key={index}
-                        className="grid grid-cols-[1.2fr_0.5fr_0.7fr_auto] items-end gap-2 rounded-md border p-2"
+                        className="grid grid-cols-1 sm:grid-cols-[1.2fr_0.5fr_0.7fr_auto] items-end gap-2 sm:items-end rounded-md border p-2 sm:p-3"
                       >
                         <div className="space-y-1">
                           <Label className="text-xs">מוצר</Label>
@@ -557,8 +565,10 @@ async function submit() {
                           size="sm"
                           variant="ghost"
                           onClick={() => removeLineItem(index)}
+                          className="w-full sm:w-auto justify-center"
                         >
                           <Trash2 className="h-4 w-4 text-destructive" />
+                          <span className="hidden sm:inline">הסר</span>
                         </Button>
                       </div>
                     );
@@ -650,14 +660,14 @@ async function submit() {
               />
             </div>
 
-            {submitError && (
+{submitError && (
               <p className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-sm text-destructive">
                 {submitError}
               </p>
             )}
           </div>
 
-          <div className="flex items-center justify-end gap-2 border-t p-3">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2 border-t p-3 sm:justify-end">
             <Button
               type="button"
               variant="ghost"
@@ -667,6 +677,7 @@ async function submit() {
                 resetForm();
               }}
               disabled={submitting}
+              className="w-full sm:w-auto"
             >
               ביטול
             </Button>
@@ -674,6 +685,7 @@ async function submit() {
               size="sm"
               onClick={submit}
               disabled={!canSubmit || submitting || !hasValidItems}
+              className="w-full sm:w-auto"
             >
               {submitting ? (
                 <Loader2 className="h-4 w-4 animate-spin" />

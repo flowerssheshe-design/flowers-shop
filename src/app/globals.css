@@ -51,6 +51,7 @@
 
   html {
     font-family: 'Heebo', system-ui, sans-serif;
+    scroll-behavior: smooth;
   }
 
   body {

@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { createClient } from "@/lib/supabase/client";
 import { ImageCarousel } from "@/components/ImageCarousel";
 import { SUPABASE_CONFIGURED, MEMBER_DISCOUNT_PERCENT } from "@/lib/constants";
-import { calculateMemberPrice, calculateDiscountAmount, formatILS } from "@/lib/utils";
+import { calculateMemberPrice, calculateDiscountAmount, formatILS, generateUUID } from "@/lib/utils";
 import type { Product } from "@/types";
 
 type Props = {
@@ -82,7 +82,7 @@ export function ProductForm({ mode, initial, nextSortOrder = 0 }: Props) {
       const uploadedUrls: string[] = [];
       for (const file of files) {
         const ext = file.name.split(".").pop() || "jpg";
-        const path = `products/${crypto.randomUUID()}.${ext}`;
+        const path = `products/${generateUUID()}.${ext}`;
         const { error: upErr } = await supabase.storage
           .from("product-images")
           .upload(path, file, {

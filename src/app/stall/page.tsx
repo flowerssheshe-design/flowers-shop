@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { LogOut, Search, CheckCircle2, Tag, ArrowDownToLine, RefreshCw, Eye, MapPin } from "lucide-react";
+import { LogOut, Search, CheckCircle2, Tag, ArrowDownToLine, RefreshCw, Eye, MapPin, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -50,6 +50,11 @@ export default function StallPage() {
   const [orderDetailOpen, setOrderDetailOpen] = useState(false);
   const { toast } = useToast();
 
+  const handleAuthError = () => {
+    document.cookie = "flowers_stall_auth=; Path=/; Max-Age=0; SameSite=Lax";
+    window.location.reload();
+  };
+
   async function load() {
     setLoading(true);
     try {
@@ -58,6 +63,10 @@ export default function StallPage() {
         fetch("/api/inventory"),
         fetch("/api/stall/orders"),
       ]);
+      if (productsRes.status === 401 || inventoryRes.status === 401 || ordersRes.status === 401) {
+        handleAuthError();
+        return;
+      }
       if (productsRes.ok) {
         const data = await productsRes.json();
         setProducts(data.products ?? []);
@@ -138,6 +147,10 @@ export default function StallPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
+      if (res.status === 401) {
+        handleAuthError();
+        return;
+      }
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error ?? "שגיאה בביצוע הפעולה");
@@ -208,11 +221,15 @@ export default function StallPage() {
 
   const handleOrderStatusChange = async (order: Order, newStatus: string) => {
     try {
-      const res = await fetch(`/api/admin/orders/${order.id}`, {
+      const res = await fetch(`/api/stall/orders/${order.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus }),
       });
+      if (res.status === 401) {
+        handleAuthError();
+        return;
+      }
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         alert(err.error ?? "לא הצליח לעדכן את ההזמנה");
@@ -242,47 +259,48 @@ export default function StallPage() {
     isDeliveryTab: boolean
   ) => {
     const isCompleted = order.status === 'completed';
-    const canModify = ordersType === 'selfPickup'; // Only self-pickup can be modified
+    const canModify = ordersType === 'selfPickup';
 
     return (
       <div key={order.id} className="rounded-xl border bg-card p-4 shadow-sm hover:shadow-md transition-all">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
+          <div className="flex-1 min-w-0 space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
               <p className="font-semibold text-foreground truncate">{order.customer_name}</p>
-              <span className="inline-flex items-center rounded-full bg-emerald-100 dark:bg-emerald-900/30 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+              <span className="inline-flex items-center rounded-full bg-emerald-100 dark:bg-emerald-900/30 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-300 whitespace-nowrap">
                 {order.delivery_type === 'pickup' ? 'איסוף עצמי' : 'משלוח'}
               </span>
-              <span className="inline-flex items-center rounded-full bg-blue-100 dark:bg-blue-900/30 px-2 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-300">
+              <span className="inline-flex items-center rounded-full bg-blue-100 dark:bg-blue-900/30 px-2 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-300 whitespace-nowrap">
                 {getStatusLabel(order.status)}
               </span>
             </div>
             <p className="text-sm text-muted-foreground">{order.customer_phone}</p>
-            <p className="text-sm font-medium text-foreground mt-1">
+            <p className="text-sm font-medium text-foreground">
               סכום: <span className="tabular-nums">{formatILS(order.total_amount)}</span>
             </p>
-            <p className="text-sm text-muted-foreground mt-0.5">
+            <p className="text-sm text-muted-foreground">
               {order.items?.map((item) => `${item.title} (${item.qty})`).join(", ")}
             </p>
-            <p className="text-sm text-muted-foreground mt-0.5">
+            <p className="text-sm text-muted-foreground">
               שיטת תשלום: <span className="font-medium text-foreground">{getPaymentMethodLabel(order.payment_method)}</span>
             </p>
             {order.notes && (
-              <p className="text-sm text-muted-foreground mt-0.5">
+              <p className="text-sm text-muted-foreground">
                 הערות: <span className="font-medium text-foreground">{order.notes}</span>
               </p>
             )}
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0 w-full sm:w-auto">
             {canModify && isCompleted && (
               <Button
                 size="sm"
                 variant="outline"
                 onClick={() => handleOrderStatusChange(order, 'approved')}
-                className="border-amber-300 text-amber-700 hover:bg-amber-50"
+                className="border-amber-300 text-amber-700 hover:bg-amber-50 w-full sm:w-auto justify-center"
               >
                 <RefreshCw className="h-4 w-4 ms-1.5" />
-                בטל אישור
+                <span className="hidden sm:inline">בטל אישור</span>
+                <span className="sm:hidden" aria-label="בטל אישור">ביטול</span>
               </Button>
             )}
             {canModify && !isCompleted && (
@@ -291,20 +309,22 @@ export default function StallPage() {
                 onClick={async () => {
                   await handleOrderStatusChange(order, 'completed');
                 }}
-                className="shrink-0"
+                className="w-full sm:w-auto justify-center"
               >
                 <CheckCircle2 className="h-4 w-4 ms-1.5" />
-                הושלם (נאסוף / נשלח)
+                <span className="hidden sm:inline">הושלם (נאסוף / נשלח)</span>
+                <span className="sm:hidden" aria-label="סמן כהושלם">הושלם</span>
               </Button>
             )}
             <Button
               size="sm"
               variant="outline"
               onClick={() => openOrderDetail(order)}
-              className="shrink-0"
+              className="w-full sm:w-auto justify-center"
             >
               <Eye className="h-4 w-4 ms-1.5" />
-              צפייה
+              <span className="hidden sm:inline">צפייה</span>
+              <span className="sm:hidden" aria-label="צפייה בפרטים">פרטים</span>
             </Button>
           </div>
         </div>
@@ -518,14 +538,21 @@ export default function StallPage() {
           )}
 
           <Dialog open={deductDialogOpen} onOpenChange={setDeductDialogOpen}>
-            <DialogContent className="sm:max-w-md" dir="rtl">
-              <DialogHeader>
-                <DialogTitle className="text-xl">
+            <DialogContent 
+              showDefaultClose={false}
+              dir="rtl"
+              className="fixed left-0 right-0 bottom-0 top-auto z-[70] w-full max-w-md mx-auto sm:top-1/2 sm:bottom-auto sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:-translate-y-1/2 sm:max-w-md sm:rounded-xl sm:shadow-xl border border-stone-200 bg-background p-0 gap-0 overflow-hidden"
+            >
+              <div className="sticky top-0 z-10 flex items-center justify-between gap-2 p-4 border-b border-stone-200 bg-stone-50/50 sm:rounded-t-xl">
+                <DialogTitle className="text-xl font-semibold text-center text-stone-800 flex-1">
                   {deductReason === "sale" ? "מכירת דוכן" : "קיזוז מלאי"}
                 </DialogTitle>
-              </DialogHeader>
+                <DialogClose className="flex items-center justify-center w-10 h-10 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-600 hover:text-stone-900 transition-colors shrink-0" aria-label="סגור">
+                  <X className="h-5 w-5" />
+                </DialogClose>
+              </div>
               {deductProduct && (
-                <div className="space-y-5 pt-2">
+                <div className="overflow-y-auto max-h-[calc(100vh-120px)] sm:max-h-[80vh] space-y-5 p-4 sm:p-6 pt-2">
                   <div className="rounded-lg border bg-muted/30 p-4">
                     <p className="font-semibold text-foreground">{deductProduct.title}</p>
                     <p className="text-sm text-muted-foreground mt-1">
@@ -583,8 +610,8 @@ export default function StallPage() {
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label className="text-sm font-medium">                        אמצעי תשלום</Label>
-                        <div className="grid grid-cols-2 gap-2">
+                        <Label className="text-sm font-medium">אמצעי תשלום</Label>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           <button
                             type="button"
                             onClick={() => setSalePaymentMethod("cash")}
@@ -625,14 +652,18 @@ export default function StallPage() {
           <Dialog open={orderDetailOpen} onOpenChange={setOrderDetailOpen}>
             <DialogContent 
               dir="rtl" 
-              className="fixed left-1/2 right-auto top-1/2 -translate-x-1/2 -translate-y-1/2 sm:max-w-xl w-[95vw] max-h-[85vh] p-0 gap-0 overflow-hidden rounded-xl border border-stone-200 shadow-xl"
+              showDefaultClose={false}
+              className="fixed left-0 right-0 bottom-0 top-auto z-[70] w-full max-w-md mx-auto sm:top-1/2 sm:bottom-auto sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:-translate-y-1/2 sm:max-w-xl sm:rounded-xl sm:shadow-xl border border-stone-200 bg-background p-0 gap-0 overflow-hidden"
             >
-              <DialogHeader className="p-4 border-b border-stone-200 bg-stone-50/50 sticky top-0 z-10">
-                <DialogTitle className="text-xl font-semibold text-center text-stone-800">
+              <div className="sticky top-0 z-10 flex items-center justify-between gap-2 p-4 border-b border-stone-200 bg-stone-50/50 sm:rounded-t-xl">
+                <DialogTitle className="text-xl font-semibold text-center text-stone-800 flex-1">
                   פרטי הזמנה
                 </DialogTitle>
-              </DialogHeader>
-              <div className="overflow-y-auto max-h-[calc(85vh-65px)] p-6 space-y-6">
+                <DialogClose className="flex items-center justify-center w-10 h-10 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-600 hover:text-stone-900 transition-colors shrink-0" aria-label="סגור">
+                  <X className="h-5 w-5" />
+                </DialogClose>
+              </div>
+              <div className="overflow-y-auto max-h-[calc(100vh-120px)] sm:max-h-[calc(85vh-65px)] p-4 sm:p-6 space-y-6">
                 {selectedOrder && (
                   <div className="grid grid-cols-2 gap-y-4 gap-x-6 text-right">
                     <div>

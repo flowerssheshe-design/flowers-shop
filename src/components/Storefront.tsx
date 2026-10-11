@@ -486,7 +486,13 @@ export function Storefront({
   </p>
 </div>
 
-          <div className="mt-10 grid gap-4 sm:grid-cols-2">
+        </div>
+      </section>
+
+      {/* Contact Information */}
+      <section id="contact" className="container scroll-mt-32 py-10">
+        <div className="mx-auto max-w-3xl">
+          <div className="grid gap-4 sm:grid-cols-2">
             <div className="rounded-xl border border-primary/10 bg-card p-4">
               <h2 className="mb-3 font-semibold text-primary">פרטי התקשרות</h2>
               <ul className="space-y-2 text-sm">

@@ -40,6 +40,7 @@ export function SiteHeader({ cartCount, onCartClick, user, hasSubmittedOrder }: 
   const navLinks = [
     { href: storeHref, label: "חנות" },
     { href: "/#about", label: "אודות" },
+    { href: "/#contact", label: "צור קשר" },
     { href: user ? "/profile" : "/login", label: "פרטי החשבון" },
   ];
 
@@ -53,7 +54,8 @@ export function SiteHeader({ cartCount, onCartClick, user, hasSubmittedOrder }: 
   }
 
   return (
-    <header className="sticky top-0 z-[60] border-b border-primary/10 bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/70">
+    <>
+      <header className="sticky top-0 z-[60] border-b border-primary/10 bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/70">
       <div className="container flex items-center justify-between overflow-x-hidden py-3 sm:py-4">
         {/* Logo / Brand */}
         <Link
@@ -153,6 +155,7 @@ export function SiteHeader({ cartCount, onCartClick, user, hasSubmittedOrder }: 
           </Button>
         </div>
       </div>
+      </header>
 
       {/* Mobile drawer */}
       <Dialog open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
@@ -188,7 +191,7 @@ export function SiteHeader({ cartCount, onCartClick, user, hasSubmittedOrder }: 
           </nav>
         </DialogContent>
       </Dialog>
-    </header>
+    </>
   );
 }
 

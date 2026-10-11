@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { generateUUID } from "@/lib/utils";
 
 const SESSION_KEY = "flowers_visit_session_id";
 
@@ -8,7 +9,7 @@ function getSessionId(): string {
   if (typeof window === "undefined") return "";
   let sessionId = sessionStorage.getItem(SESSION_KEY);
   if (!sessionId) {
-    sessionId = crypto.randomUUID();
+    sessionId = generateUUID();
     sessionStorage.setItem(SESSION_KEY, sessionId);
   }
   return sessionId;
