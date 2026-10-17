@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SUPABASE_CONFIGURED } from "@/lib/constants";
+import { isStallSaleOrder } from "@/lib/utils";
 import type { Order } from "@/types";
 
 export const runtime = "nodejs";
@@ -36,7 +37,9 @@ export async function GET() {
         { status: 500 },
       );
     }
-    return NextResponse.json({ orders: (data as Order[]) ?? [] });
+    return NextResponse.json({
+      orders: ((data as Order[]) ?? []).filter((o) => !isStallSaleOrder(o)),
+    });
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: "שגיאת שרת" }, { status: 500 });

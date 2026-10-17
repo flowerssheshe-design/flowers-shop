@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Phone, MapPin, Package, LogOut, RefreshCw, StickyNote } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { buildWhatsAppLink, normalizeWhatsAppRecipient } from "@/lib/utils";
 import type { Order } from "@/types";
 import PinAuthGate from "@/components/PinAuthGate";
+import { NotesPopover } from "@/components/NotesPopover";
 
 export default function CourierPage() {
   const router = useRouter();
@@ -14,15 +15,20 @@ export default function CourierPage() {
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<string | null>(null);
 
-  const handleAuthError = () => {
+  const handleAuthError = useCallback(() => {
     document.cookie = "flowers_courier_auth=; Path=/; Max-Age=0; SameSite=Lax";
-    window.location.reload();
-  };
+    localStorage.removeItem("flowers_courier_passcode");
+    window.dispatchEvent(new Event("courier:unauth"));
+  }, []);
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/courier/orders");
+      const passcode = localStorage.getItem("flowers_courier_passcode") ?? "";
+      const res = await fetch("/api/courier/orders", {
+        credentials: "include",
+        headers: { "x-courier-passcode": passcode },
+      });
       if (res.status === 401) {
         handleAuthError();
         return;
@@ -36,18 +42,20 @@ export default function CourierPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [handleAuthError]);
 
   useEffect(() => {
     void load();
-  }, []);
+  }, [load]);
 
   async function markSent(orderId: string) {
     setUpdating(orderId);
     try {
-      const res = await fetch(`/api/courier/orders/${orderId}`, {
-        method: "PATCH",
-      });
+       const res = await fetch(`/api/courier/orders/${orderId}`, {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "x-courier-passcode": localStorage.getItem("flowers_courier_passcode") ?? "" },
+        });
       if (res.status === 401) {
         handleAuthError();
         return;
@@ -68,6 +76,9 @@ export default function CourierPage() {
   function handleLogout() {
     document.cookie =
       "flowers_courier_auth=; Path=/; Max-Age=0; SameSite=Lax";
+    localStorage.removeItem("flowers_courier_passcode");
+    sessionStorage.removeItem("flowers_courier_passcode");
+    window.dispatchEvent(new Event("courier:unauth"));
     router.replace("/courier");
   }
 
@@ -172,9 +183,7 @@ export default function CourierPage() {
                           <StickyNote className="h-4 w-4" />
                           <span>הערות:</span>
                         </div>
-                        <p className="mr-6 text-sm text-muted-foreground">
-                          {order.notes}
-                        </p>
+                        <NotesPopover notes={order.notes} trigger={<p className="mr-6 text-sm text-muted-foreground">{order.notes}</p>} />
                       </div>
                     )}
 

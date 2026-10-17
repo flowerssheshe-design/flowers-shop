@@ -3,7 +3,7 @@ import { COURIER_PIN } from "@/lib/constants";
 
 export async function POST(req: NextRequest) {
   const { pin } = await req.json();
-  if (pin !== COURIER_PIN) {
+  if (!COURIER_PIN || pin !== COURIER_PIN) {
     return NextResponse.json(
       { success: false, error: "PIN שגוי" },
       { status: 401 }
@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
 
   const res = NextResponse.json({ success: true });
   res.cookies.set("flowers_courier_auth", "1", {
-    httpOnly: true,
+    httpOnly: false,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     maxAge: 60 * 60 * 24 * 7,

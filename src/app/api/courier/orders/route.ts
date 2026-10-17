@@ -1,15 +1,19 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { cookies } from "next/headers";
+import { COURIER_PIN } from "@/lib/constants";
 import type { Order } from "@/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export async function GET() {
+export async function GET(req: Request) {
   const store = cookies();
-  if (store.get("flowers_courier_auth")?.value !== "1") {
+  const cookieOk = store.get("flowers_courier_auth")?.value === "1";
+  const headerPin = req.headers.get("x-courier-passcode");
+  const headerOk = headerPin === COURIER_PIN;
+  if (!cookieOk && !headerOk) {
     return NextResponse.json(
       { error: "נדרש זיהוי שליח" },
       { status: 401 },

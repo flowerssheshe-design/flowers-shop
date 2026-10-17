@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { LogOut, Search, CheckCircle2, Tag, ArrowDownToLine, RefreshCw, Eye, MapPin, X } from "lucide-react";
+import { LogOut, Search, CheckCircle2, Tag, ArrowDownToLine, RefreshCw, Eye, MapPin, X, Package, Minus, Plus, Trash2, History } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,10 +13,11 @@ import {
   DialogTitle,
   DialogClose,
 } from "@/components/ui/dialog";
-import { formatILS } from "@/lib/utils";
+import { formatILS, isStallSaleOrder } from "@/lib/utils";
 import { useToast } from "@/components/ui/toaster";
 import type { Product, Inventory, Order } from "@/types";
 import PinAuthGate from "@/components/PinAuthGate";
+import { NotesPopover } from "@/components/NotesPopover";
 
 type DeductReason = "sale" | "ruined" | "waste";
 
@@ -31,13 +32,17 @@ export default function StallPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [inventory, setInventory] = useState<Inventory[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'selfPickup' | 'delivery' | 'liveSales'>('liveSales');
+  const [activeTab, setActiveTab] = useState<'selfPickup' | 'delivery' | 'liveSales' | 'inventory'>('liveSales');
   const [selfOrders, setSelfOrders] = useState<Order[]>([]);
   const [deliveryOrders, setDeliveryOrders] = useState<Order[]>([]);
   const [searchName, setSearchName] = useState('');
   const [searchPhone, setSearchPhone] = useState('');
   const [deliverySearchName, setDeliverySearchName] = useState('');
   const [deliverySearchPhone, setDeliverySearchPhone] = useState('');
+
+  const [draftStock, setDraftStock] = useState<Record<string, number>>({});
+  const [editingStock, setEditingStock] = useState<Record<string, boolean>>({});
+  const [savingStock, setSavingStock] = useState<Record<string, boolean>>({});
 
   const [deductDialogOpen, setDeductDialogOpen] = useState(false);
   const [deductProduct, setDeductProduct] = useState<Product | null>(null);
@@ -48,22 +53,31 @@ export default function StallPage() {
   const [deducting, setDeducting] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [orderDetailOpen, setOrderDetailOpen] = useState(false);
+  const [stallSales, setStallSales] = useState<Order[]>([]);
+  const [showSalesHistory, setShowSalesHistory] = useState(false);
+  const [deletingSaleId, setDeletingSaleId] = useState<string | null>(null);
   const { toast } = useToast();
 
-  const handleAuthError = () => {
+  const handleAuthError = useCallback(() => {
     document.cookie = "flowers_stall_auth=; Path=/; Max-Age=0; SameSite=Lax";
     window.location.reload();
-  };
+  }, []);
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [productsRes, inventoryRes, ordersRes] = await Promise.all([
+      const [productsRes, inventoryRes, ordersRes, salesRes] = await Promise.all([
         fetch("/api/products"),
         fetch("/api/inventory"),
         fetch("/api/stall/orders"),
+        fetch("/api/stall/sales"),
       ]);
-      if (productsRes.status === 401 || inventoryRes.status === 401 || ordersRes.status === 401) {
+      if (
+        productsRes.status === 401 ||
+        inventoryRes.status === 401 ||
+        ordersRes.status === 401 ||
+        salesRes.status === 401
+      ) {
         handleAuthError();
         return;
       }
@@ -78,19 +92,37 @@ export default function StallPage() {
       if (ordersRes.ok) {
         const data = await ordersRes.json();
         const orders = (data.orders ?? []) as Order[];
-        setSelfOrders(orders.filter(o => o.delivery_type === 'pickup'));
+        setSelfOrders(
+          orders.filter(
+            (o) => o.delivery_type === 'pickup' && !isStallSaleOrder(o),
+          ),
+        );
         setDeliveryOrders(orders.filter(o => o.delivery_type === 'delivery'));
+      }
+      if (salesRes.ok) {
+        const data = await salesRes.json();
+        setStallSales((data.sales ?? []) as Order[]);
       }
     } catch (e) {
       console.error(e);
     } finally {
       setLoading(false);
     }
-  }
+  }, [handleAuthError]);
 
   useEffect(() => {
     void load();
-  }, []);
+  }, [load]);
+
+  useEffect(() => {
+    const handler = (e: StorageEvent) => {
+      if (e.key === SYNC_KEY && e.newValue) {
+        void load();
+      }
+    };
+    window.addEventListener("storage", handler);
+    return () => window.removeEventListener("storage", handler);
+  }, [load]);
 
   const SYNC_KEY = 'inventory-sync';
 
@@ -103,6 +135,81 @@ export default function StallPage() {
   const getStock = (productId: string): number => {
     const inv = inventory.find((i) => i.product_id === productId);
     return inv?.live_stock_count ?? 0;
+  };
+
+  const updateInventory = async (productId: string, kind: "delta" | "set", value: number) => {
+    setSavingStock((prev) => ({ ...prev, [productId]: true }));
+    try {
+      const body: Record<string, unknown> = { product_id: productId };
+      if (kind === "delta") {
+        body.delta = value;
+      } else {
+        body.live_stock_count = Math.max(0, value);
+      }
+      const res = await fetch("/api/inventory", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (res.status === 401) {
+        handleAuthError();
+        return;
+      }
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error ?? "עדכון המלאי נכשל");
+      }
+      const data = await res.json();
+      const updated = (data as { inventory?: Inventory }).inventory;
+      if (updated) {
+        setInventory((prev) =>
+          prev.map((inv) => (inv.product_id === productId ? updated : inv)),
+        );
+      }
+      notifySync();
+      toast({
+        title: "המלאי עודכן בהצלחה",
+        variant: "success",
+      });
+    } catch (e) {
+      console.error(e);
+      alert(e instanceof Error ? e.message : "שגיאה בעדכון המלאי");
+    } finally {
+      setSavingStock((prev) => ({ ...prev, [productId]: false }));
+    }
+  };
+
+  const changeStock = async (productId: string, delta: number) => {
+    await updateInventory(productId, "delta", delta);
+  };
+
+  const toggleStock = async (product: Product) => {
+    const stock = getStock(product.id);
+    const inv = inventory.find((i) => i.product_id === product.id);
+    const initial = Math.max(0, inv?.initial_stock_count ?? 0);
+    if (stock > 0) {
+      await updateInventory(product.id, "set", 0);
+    } else {
+      await updateInventory(product.id, "set", initial > 0 ? initial : 1);
+    }
+  };
+
+  const handleStockInputChange = (productId: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = parseInt(e.target.value, 10);
+    if (Number.isNaN(v)) return;
+    setDraftStock((prev) => ({ ...prev, [productId]: Math.max(0, v) }));
+  };
+
+  const handleStockSave = async (productId: string) => {
+    const current = getStock(productId);
+    const target = draftStock[productId] ?? current;
+    if (target === current) {
+      setEditingStock((prev) => { const next = { ...prev }; delete next[productId]; return next; });
+      return;
+    }
+    setEditingStock((prev) => { const next = { ...prev }; delete next[productId]; return next; });
+    setDraftStock((prev) => { const next = { ...prev }; delete next[productId]; return next; });
+    await updateInventory(productId, "set", target);
   };
 
   const openDeductDialog = (product: Product) => {
@@ -180,6 +287,9 @@ export default function StallPage() {
   const handleLogout = () => {
     document.cookie =
       "flowers_stall_auth=; Path=/; Max-Age=0; SameSite=Lax";
+    localStorage.removeItem("flowers_stall_passcode");
+    sessionStorage.removeItem("flowers_stall_passcode");
+    window.dispatchEvent(new Event("stall:unauth"));
     router.replace("/stall");
   };
 
@@ -253,6 +363,37 @@ export default function StallPage() {
     }
   };
 
+  const handleDeleteSale = async (order: Order) => {
+    if (!confirm("האם למחוק מכירה זו?")) {
+      return;
+    }
+    setDeletingSaleId(order.id);
+    try {
+      const res = await fetch(`/api/stall/sales/${order.id}`, {
+        method: "DELETE",
+      });
+      if (res.status === 401) {
+        handleAuthError();
+        return;
+      }
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error ?? "מחיקת המכירה נכשלה");
+      }
+      setStallSales((prev) => prev.filter((o) => o.id !== order.id));
+      void load();
+      toast({
+        title: "המכירה נמחקה והמלאי חודש",
+        variant: "success",
+      });
+    } catch (e) {
+      console.error(e);
+      alert(e instanceof Error ? e.message : "שגיאה במחיקת המכירה");
+    } finally {
+      setDeletingSaleId(null);
+    }
+  };
+
   const renderOrderCard = (
     order: Order,
     ordersType: 'selfPickup' | 'delivery',
@@ -285,9 +426,9 @@ export default function StallPage() {
               שיטת תשלום: <span className="font-medium text-foreground">{getPaymentMethodLabel(order.payment_method)}</span>
             </p>
             {order.notes && (
-              <p className="text-sm text-muted-foreground">
-                הערות: <span className="font-medium text-foreground">{order.notes}</span>
-              </p>
+              <div className="text-sm text-muted-foreground">
+                הערות: <NotesPopover notes={order.notes} trigger={<span className="font-medium text-foreground">{order.notes}</span>} />
+              </div>
             )}
           </div>
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0 w-full sm:w-auto">
@@ -494,47 +635,336 @@ export default function StallPage() {
 
           {activeTab === 'liveSales' && (
             <>
+              <div className="flex items-center gap-2 mb-4">
+                <button
+                  onClick={() => setShowSalesHistory(false)}
+                  className={`inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-all ${
+                    !showSalesHistory
+                      ? 'bg-background text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <ArrowDownToLine className="h-4 w-4" />
+                  מכירה במלאי בדוכן
+                </button>
+                <button
+                  onClick={() => setShowSalesHistory(true)}
+                  className={`inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-all ${
+                    showSalesHistory
+                      ? 'bg-background text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <History className="h-4 w-4" />
+                  היסטוריית מכירות
+                </button>
+              </div>
+
+              {!showSalesHistory ? (
+                <>
+                  {loading ? (
+                    <div className="flex justify-center py-20">
+                      <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                    </div>
+                  ) : products.length === 0 ? (
+                    <div className="rounded-xl border bg-card p-10 text-center shadow-sm">
+                      <ArrowDownToLine className="h-10 w-10 mx-auto text-muted-foreground/50 mb-3" />
+                      <p className="text-muted-foreground text-sm">אין מוצרים פעילים</p>
+                    </div>
+                  ) : (
+                    <div className="grid gap-4">
+                      {products.map((product) => {
+                        const stock = getStock(product.id);
+                        return (
+                          <div
+                            key={product.id}
+                            className="rounded-xl border bg-card p-5 shadow-sm hover:shadow-md transition-all"
+                          >
+                            <div className="flex items-center justify-between gap-4">
+                              <div className="flex-1 min-w-0">
+                                <h2 className="text-lg font-semibold text-foreground">{product.title}</h2>
+                                <p className="text-xl font-bold text-primary mt-1">{formatILS(product.price_standard)}</p>
+                                 <p className="text-sm font-medium text-foreground mt-2 flex items-center gap-2">
+                                   זמין למכירה: <span className="tabular-nums">{stock}</span>
+                                   <button
+                                     type="button"
+                                     onClick={() => void changeStock(product.id, 1)}
+                                     disabled={savingStock[product.id]}
+                                     className="inline-flex items-center justify-center h-6 w-6 rounded-md border text-xs hover:bg-muted disabled:opacity-50"
+                                   >
+                                     <Plus className="h-3 w-3" />
+                                   </button>
+                                   <button
+                                     type="button"
+                                     onClick={() => void changeStock(product.id, -1)}
+                                     disabled={savingStock[product.id] || stock <= 0}
+                                     className="inline-flex items-center justify-center h-6 w-6 rounded-md border text-xs hover:bg-muted disabled:opacity-50"
+                                   >
+                                     <Minus className="h-3 w-3" />
+                                   </button>
+                                 </p>
+                              </div>
+                              <Button
+                                size="icon"
+                                onClick={() => openDeductDialog(product)}
+                                disabled={stock <= 0}
+                                className="shrink-0"
+                              >
+                                <Tag className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="rounded-xl border bg-card p-4 shadow-sm">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <h2 className="text-lg font-semibold text-foreground">היסטוריית מכירות דוכן</h2>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        מכירות ישירות שבוצעו בדוכן
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void load()}
+                      disabled={loading}
+                      className="border-primary/20 hover:border-primary/40 hover:bg-primary/5"
+                    >
+                      <RefreshCw className={`h-4 w-4 ml-1.5 ${loading ? "animate-spin" : ""}`} />
+                      רענון
+                    </Button>
+                  </div>
+
+                  {stallSales.length === 0 ? (
+                    <div className="rounded-xl border bg-card p-10 text-center shadow-sm">
+                      <History className="h-10 w-10 mx-auto text-muted-foreground/50 mb-3" />
+                      <p className="text-muted-foreground text-sm">לא בוצעו עדיין מכירות בדוכן.</p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
+                          <tr>
+                            <th className="p-3 text-start">תאריך</th>
+                            <th className="p-3 text-start">פריטים וכמות</th>
+                            <th className="p-3 text-start">סכום כולל</th>
+                            <th className="p-3 text-start">אמצעי תשלום</th>
+                            <th className="p-3 text-start">פעולות</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {stallSales.map((sale) => {
+                            const items = Array.isArray(sale.items) ? sale.items : [];
+                            return (
+                              <tr key={sale.id} className="border-t align-top">
+                                <td className="p-3 whitespace-nowrap text-muted-foreground">
+                                  {new Date(sale.created_at).toLocaleString("he-IL")}
+                                </td>
+                                <td className="p-3">
+                                  {items.map((it) => `${it.title} ×${it.qty}`).join(", ") || "—"}
+                                </td>
+                                <td className="p-3 font-semibold tabular-nums text-foreground">
+                                  {formatILS(sale.total_amount)}
+                                </td>
+                                <td className="p-3 text-muted-foreground">
+                                  {getPaymentMethodLabel(sale.payment_method)}
+                                </td>
+                                <td className="p-3">
+                                  <Button
+                                    size="sm"
+                                    variant="destructive"
+                                    onClick={() => handleDeleteSale(sale)}
+                                    disabled={deletingSaleId === sale.id}
+                                  >
+                                    {deletingSaleId === sale.id ? "מוחק..." : "מחק מכירה"}
+                                    <Trash2 className={`ml-2 ${deletingSaleId === sale.id ? "animate-spin" : ""}`} />
+                                  </Button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+
+          {activeTab === 'inventory' && (
+            <div className="rounded-xl border bg-card p-4 shadow-sm">
+              <div className="mb-4 flex items-center justify-between sm:flex-wrap sm:gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-foreground">ניהול מלאי בדוכן</h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    עדכון כמות במלאי בזמן אמת לכל המוצרים הפעילים
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void load()}
+                  disabled={loading}
+                  className="border-primary/20 hover:border-primary/40 hover:bg-primary/5"
+                >
+                  <RefreshCw className={`h-4 w-4 ml-1.5 ${loading ? "animate-spin" : ""}`} />
+                  רענון
+                </Button>
+              </div>
+
               {loading ? (
                 <div className="flex justify-center py-20">
                   <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
                 </div>
               ) : products.length === 0 ? (
                 <div className="rounded-xl border bg-card p-10 text-center shadow-sm">
-                  <ArrowDownToLine className="h-10 w-10 mx-auto text-muted-foreground/50 mb-3" />
-                  <p className="text-muted-foreground text-sm">אין מוצרים פעילים</p>
+                  <Package className="h-10 w-10 mx-auto text-muted-foreground/50 mb-3" />
+                  <p className="text-muted-foreground text-sm">אין מוצרים פעילים לניהול מלאי.</p>
                 </div>
               ) : (
-                <div className="grid gap-4">
+                <div className="space-y-3">
                   {products.map((product) => {
                     const stock = getStock(product.id);
+                    const inv = inventory.find((i) => i.product_id === product.id);
+                    const initial = inv?.initial_stock_count ?? 0;
+                    const draft = draftStock[product.id] ?? stock;
+                    const isEditing = editingStock[product.id] === true;
+                    const saving = savingStock[product.id];
+
                     return (
                       <div
                         key={product.id}
-                        className="rounded-xl border bg-card p-5 shadow-sm hover:shadow-md transition-all"
+                        className="rounded-xl border bg-card p-4 shadow-sm hover:shadow-md transition-all"
                       >
-                        <div className="flex items-center justify-between gap-4">
+                        <div className="flex items-center justify-between gap-3 mb-3">
                           <div className="flex-1 min-w-0">
-                            <h2 className="text-lg font-semibold text-foreground">{product.title}</h2>
-                            <p className="text-xl font-bold text-primary mt-1">{formatILS(product.price_standard)}</p>
-                            <p className="text-sm font-medium text-foreground mt-2">
-                              זמין למכירה: <span className="tabular-nums">{stock}</span>
+                            <p className="font-semibold text-foreground truncate">
+                              {product.title}
+                            </p>
+                            <p className="text-xs text-muted-foreground dir-ltr">
+                              {formatILS(product.price_standard)}
                             </p>
                           </div>
-                          <Button
-                            size="icon"
-                            onClick={() => openDeductDialog(product)}
-                            disabled={stock <= 0}
-                            className="shrink-0"
+                          <span
+                            className={`text-xs font-medium tabular-nums border px-2.5 py-1 rounded ${
+                              stock > 0
+                                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                : "border-rose-200 bg-rose-50 text-rose-700"
+                            }`}
                           >
-                            <Tag className="h-4 w-4" />
-                          </Button>
+                            מלאי: {stock}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                          <button
+                            type="button"
+                            onClick={() => changeStock(product.id, -1)}
+                            disabled={stock <= 0 || saving}
+                            aria-label="הסר יחידה מהמלאי"
+                            className="flex items-center justify-center shrink-0 rounded-xl border border-input bg-background p-1 text-sm font-medium transition-colors min-w-[44px] min-h-[44px] disabled:opacity-50 disabled:pointer-events-none hover:bg-accent"
+                          >
+                            <Minus className="h-4 w-4" />
+                            <span className="hidden sm:inline">מינוס יחידה</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => changeStock(product.id, 1)}
+                            disabled={saving}
+                            aria-label="הוסף יחידה למלאי"
+                            className="flex items-center justify-center shrink-0 rounded-xl border border-input bg-background p-1 text-sm font-medium transition-colors min-w-[44px] min-h-[44px] disabled:opacity-50 disabled:pointer-events-none hover:bg-accent"
+                          >
+                            <Plus className="h-4 w-4" />
+                            <span className="hidden sm:inline">הוסף יחידה</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => toggleStock(product)}
+                            disabled={saving}
+                            aria-label={stock > 0 ? "סמן כאזל מהמלאי" : "סמן כבמלאי"}
+                            className="flex items-center justify-center shrink-0 rounded-xl border border-input bg-background px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none hover:bg-accent whitespace-nowrap"
+                          >
+                            {stock > 0 ? "אזל מהמלאי" : "במלאי"}
+                          </button>
+                          {isEditing ? (
+                            <>
+                              <input
+                                type="number"
+                                min="0"
+                                value={draft}
+                                onChange={(e) => handleStockInputChange(product.id, e)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") void handleStockSave(product.id);
+                                  if (e.key === "Escape") {
+                                    setEditingStock((prev) => {
+                                      const next = { ...prev };
+                                      delete next[product.id];
+                                      return next;
+                                    });
+                                    setDraftStock((prev) => {
+                                      const next = { ...prev };
+                                      delete next[product.id];
+                                      return next;
+                                    });
+                                  }
+                                }}
+                                className="w-20 h-9 text-center border rounded-md bg-background px-2 text-sm"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => void handleStockSave(product.id)}
+                                disabled={saving || draft === stock}
+                                className="flex items-center justify-center shrink-0 rounded-xl border border-input bg-background px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none hover:bg-accent whitespace-nowrap"
+                              >
+                                שמור
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingStock((prev) => {
+                                    const next = { ...prev };
+                                    delete next[product.id];
+                                    return next;
+                                  });
+                                  setDraftStock((prev) => {
+                                    const next = { ...prev };
+                                    delete next[product.id];
+                                    return next;
+                                  });
+                                }}
+                                disabled={saving}
+                                className="flex items-center justify-center shrink-0 rounded-xl border border-input bg-background px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none hover:bg-accent whitespace-nowrap"
+                              >
+                                ביטול
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingStock((prev) => ({ ...prev, [product.id]: true }));
+                                setDraftStock((prev) => ({ ...prev, [product.id]: stock }));
+                              }}
+                              disabled={saving}
+                              className="flex items-center justify-center shrink-0 rounded-xl border border-input bg-background px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none hover:bg-accent whitespace-nowrap"
+                              aria-label="עריכת כמות מלאי"
+                            >
+                              עריכה
+                            </button>
+                          )}
                         </div>
                       </div>
                     );
                   })}
                 </div>
               )}
-            </>
+            </div>
           )}
 
           <Dialog open={deductDialogOpen} onOpenChange={setDeductDialogOpen}>

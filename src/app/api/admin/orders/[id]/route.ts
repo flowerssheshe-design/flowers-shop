@@ -10,8 +10,16 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+const PatchCartItemSchema = z.object({
+  productId: z.string().uuid(),
+  title: z.string().min(1).max(200),
+  qty: z.number().int().min(1).max(999),
+  price: z.number().min(0).max(100000),
+  image_url: z.string().url().nullish(),
+});
+
 const PatchSchema = z.object({
-  status: z.enum(["pending_payment", "approved", "completed", "cancelled"]).optional(),
+  status: z.enum(["pending_payment", "approved", "completed", "cancelled", "archived"]).optional(),
   is_member: z.boolean().optional(),
   customer_name: z.string().min(2).max(100).optional(),
   customer_phone: z.string().min(8).max(30).optional(),
@@ -20,6 +28,11 @@ const PatchSchema = z.object({
   fulfillment_type: z.enum(["delivery", "pickup"]).optional(),
   payment_method: z.enum(["bit", "paybox", "cash"]).optional(),
   greeting_note: z.string().max(1000).nullish(),
+  items: z.array(PatchCartItemSchema).optional(),
+  total_amount: z.number().min(0).max(1000000).optional(),
+  delivery_type: z.enum(["pickup", "delivery"]).optional(),
+  delivery_fee: z.number().min(0).max(10000).optional(),
+  user_id: z.string().nullish(),
 });
 
 async function restoreStockForOrder(
@@ -163,7 +176,9 @@ export async function PATCH(
 
     const updatePayload: Record<string, unknown> = { ...parsed.data };
 
-    // Stock deduction: only in realtime mode, when transitioning to approved/completed
+    const newItems = (parsed.data.items ?? existingItems) as CartItem[];
+    const itemsChanged = parsed.data.items !== undefined;
+
     const storeMode = await getStoreMode();
     const isRealtime = isRealtimeMode(storeMode);
     const confirmedStatuses = ["approved", "completed"];
@@ -171,10 +186,12 @@ export async function PATCH(
       isRealtime &&
       newStatus && confirmedStatuses.includes(newStatus) &&
       !wasDeducted;
-    if (isConfirming && existingItems.length > 0) {
+
+    // Stock deduction: only in realtime mode, when transitioning to confirmed status
+    if (isConfirming && newItems.length > 0) {
       const result = await deductStockForOrder(
         admin,
-        existingItems.map((it) => ({
+        newItems.map((it) => ({
           productId: it.productId,
           qty: it.qty,
           title: it.title,
@@ -190,13 +207,36 @@ export async function PATCH(
     }
 
     // Stock restoration: when cancelling or reverting a confirmed order
-    // that had stock deducted (e.g. approved → pending_payment, or any → cancelled)
     const revertingFromConfirmed =
       oldStatus !== "cancelled" &&
       (newStatus === "cancelled" || newStatus === "pending_payment");
     if (revertingFromConfirmed && wasDeducted && existingItems.length > 0) {
       await restoreStockForOrder(admin, existingItems);
       updatePayload.inventory_deducted = false;
+    }
+
+    // Stock adjustment when items change on an order that already had stock deducted
+    if (itemsChanged && wasDeducted && existingItems.length > 0) {
+      await restoreStockForOrder(admin, existingItems);
+      if (isRealtime && newItems.length > 0) {
+        const result = await deductStockForOrder(
+          admin,
+          newItems.map((it) => ({
+            productId: it.productId,
+            qty: it.qty,
+            title: it.title,
+          })),
+        );
+        if (!result.success) {
+          return NextResponse.json(
+            { error: `המוצר "${result.title}" אזל מהמלאי` },
+            { status: 409 },
+          );
+        }
+        updatePayload.inventory_deducted = true;
+      } else {
+        updatePayload.inventory_deducted = false;
+      }
     }
 
     const { data, error } = await admin

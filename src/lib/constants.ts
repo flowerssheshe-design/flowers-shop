@@ -43,6 +43,6 @@ export const CLUB_DISCOUNT_THRESHOLD = Number(
 export const MEMBER_DISCOUNT_PERCENT = Number(
   process.env.NEXT_PUBLIC_MEMBER_DISCOUNT_PERCENT ?? 10,
 );
-export const ADMIN_PIN = process.env.ADMIN_PIN ?? "1234";
-export const STALL_PIN = process.env.STALL_PIN ?? "5678";
-export const COURIER_PIN = process.env.COURIER_PIN ?? "9012";
+export const ADMIN_PIN = process.env.ADMIN_PIN ?? "";
+export const STALL_PIN = process.env.STALL_PIN ?? "";
+export const COURIER_PIN = process.env.COURIER_PIN ?? "";

@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,27 +30,35 @@ export default function PinAuthGate({
     const docCookie = document.cookie
       .split("; ")
       .find((row) => row.startsWith(`${cookieName}=`));
-    if (docCookie) {
+    const stored = localStorage.getItem(`flowers_${pinRole.toLowerCase()}_auth`);
+    if (docCookie || stored === "1") {
       setAuthed(true);
     }
+    const handler = () => setAuthed(false);
+    window.addEventListener(`${pinRole.toLowerCase()}:unauth`, handler);
+    return () => window.removeEventListener(`${pinRole.toLowerCase()}:unauth`, handler);
   }, [pinRole]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (loading) return;
+    const trimmed = pin.trim();
+    if (!trimmed) return;
     setLoading(true);
     setError(null);
     try {
       const res = await fetch(`/api/${pinRole.toLowerCase()}/verify-pin`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pin }),
+        body: JSON.stringify({ pin: trimmed }),
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
         setError(data.error || "PIN שגוי");
         return;
       }
-      setAuthed(true);
+       setAuthed(true);
+       localStorage.setItem(`flowers_${pinRole.toLowerCase()}_auth`, "1");
     } catch {
       setError("שגיאת חיבור");
     } finally {
@@ -75,9 +83,8 @@ export default function PinAuthGate({
             id="pin"
             type="tel"
             inputMode="numeric"
-            maxLength={4}
             value={pin}
-            onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
+            onChange={(e) => setPin(e.target.value)}
             placeholder="****"
             required
             autoFocus
@@ -87,8 +94,8 @@ export default function PinAuthGate({
         {error && (
           <p className="text-sm text-red-600 text-center">{error}</p>
         )}
-        <Button type="submit" className="w-full" disabled={loading || pin.length !== 4}>
-          {loading ? "מאמת..." : "כניסה"}
+        <Button type="submit" className="w-full" disabled={loading || !pin.trim()}>
+          {loading ? "מאמת..." : "אישור"}
         </Button>
       </form>
     </div>

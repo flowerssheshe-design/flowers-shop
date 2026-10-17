@@ -3,7 +3,7 @@ import { STALL_PIN } from "@/lib/constants";
 
 export async function POST(req: NextRequest) {
   const { pin } = await req.json();
-  if (pin !== STALL_PIN) {
+  if (!STALL_PIN || pin !== STALL_PIN) {
     return NextResponse.json(
       { success: false, error: "PIN שגוי" },
       { status: 401 }

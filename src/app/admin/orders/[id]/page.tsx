@@ -7,6 +7,8 @@ import {
   ExternalLink,
   Loader2,
   LogOut,
+  Minus,
+  Plus,
   RefreshCw,
   Save,
   Trash2,
@@ -22,7 +24,8 @@ import {
 import { MEMBER_DISCOUNT_PERCENT } from "@/lib/constants";
 import { AdminNav } from "@/components/AdminNav";
 import { formatILS } from "@/lib/utils";
-import type { Order } from "@/types";
+import { useToast } from "@/components/ui/toaster";
+import type { CartItem, Order, Product } from "@/types";
 
 const STATUS_OPTIONS: Array<{
   value: Order["status"];
@@ -45,6 +48,67 @@ export default function AdminOrderDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const { toast } = useToast();
+
+  const [editedItems, setEditedItems] = useState<CartItem[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(false);
+  const [addingProductId, setAddingProductId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (order) setEditedItems([...order.items]);
+  }, [order]);
+
+  async function loadProducts() {
+    setLoadingProducts(true);
+    try {
+      const res = await fetch("/api/admin/products", { cache: "no-store" });
+      const data = await res.json();
+      setProducts(data.products ?? []);
+    } catch {
+      setProducts([]);
+    } finally {
+      setLoadingProducts(false);
+    }
+  }
+
+  useEffect(() => {
+    if (orderId) {
+      void loadProducts();
+    }
+  }, [orderId]);
+
+  function updateItemQty(index: number, qty: number) {
+    setEditedItems((prev) =>
+      prev.map((it, i) => (i === index ? { ...it, qty: Math.max(1, qty) } : it)),
+    );
+  }
+
+  function removeItem(index: number) {
+    setEditedItems((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function addItem(productId: string) {
+    const product = products.find((p) => p.id === productId);
+    if (!product) return;
+    setEditedItems((prev) => [
+      ...prev,
+      {
+        productId: product.id,
+        title: product.title,
+        qty: 1,
+        price: product.price_standard,
+        image_url: product.image_url,
+      },
+    ]);
+    setAddingProductId(null);
+  }
+
+  const itemsSubtotal = editedItems.reduce(
+    (s, it) => s + it.price * it.qty,
+    0,
+  );
+  const itemsTotal = itemsSubtotal + (order?.delivery_fee ?? 0);
 
   useEffect(() => {
     if (!isAdminAuthenticated()) {
@@ -92,13 +156,33 @@ export default function AdminOrderDetailPage() {
           fulfillment_type: order.fulfillment_type,
           payment_method: order.payment_method,
           greeting_note: order.greeting_note,
+          items: editedItems,
+          total_amount: itemsTotal,
+          delivery_type: order.delivery_type,
+          delivery_fee: order.delivery_fee,
+          is_member: order.is_member,
+          user_id: order.user_id,
         }),
       });
-      if (!res.ok) throw new Error("שמירה נכשלה");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        const apiMsg = (errData as { error?: string }).error;
+        throw new Error(apiMsg || "שמירה נכשלה");
+      }
       const data = (await res.json()) as { order: Order };
       setOrder(data.order);
+      toast({
+        title: "ההזמנה עודכנה בהצלחה",
+        variant: "success",
+      });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "שגיאה");
+      const message = e instanceof Error ? e.message : "שגיאה";
+      setError(message);
+      toast({
+        title: "שמירת ההזמנה נכשלה",
+        description: message,
+        variant: "error",
+      });
     } finally {
       setSaving(false);
     }
@@ -131,8 +215,6 @@ export default function AdminOrderDetailPage() {
     clearAdminAuth();
     window.location.replace("/admin");
   }
-
-  const items = order ? Array.isArray(order.items) ? order.items : [] : [];
 
   if (!ready) {
     return (
@@ -362,30 +444,114 @@ export default function AdminOrderDetailPage() {
             </div>
 
             <section className="rounded-xl border bg-card p-4 shadow-sm">
-              <h2 className="mb-2 font-semibold">פריטים בהזמנה</h2>
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="font-semibold">פריטים בהזמנה</h2>
+                {products.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={addingProductId ?? ""}
+                      onChange={(e) => setAddingProductId(e.target.value || null)}
+                      className="rounded-md border border-input bg-background px-2 py-1 text-sm"
+                    >
+                      <option value="">הוסף פריט</option>
+                      {products.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.title}
+                        </option>
+                      ))}
+                    </select>
+                    {addingProductId && (
+                      <Button
+                        size="sm"
+                        onClick={() => addItem(addingProductId)}
+                        className="rounded-full p-1"
+                      >
+                        <Plus className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </div>
               <div className="space-y-2">
-                {items.length === 0 ? (
+                {editedItems.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
                     אין פריטים בהזמנה.
                   </p>
                 ) : (
-                  items.map((it, idx) => (
+                  editedItems.map((it, idx) => (
                     <div
                       key={idx}
                       className="flex items-center justify-between rounded-md border p-2 text-sm"
                     >
-                      <span className="truncate min-w-0">{it.title} ×{it.qty}</span>
-                      <span className="tabular-nums">
-                        {formatILS(it.price * it.qty)}
-                      </span>
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className="truncate">{it.title}</span>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => updateItemQty(idx, it.qty - 1)}
+                            disabled={it.qty <= 1}
+                            className="h-7 w-7 p-0"
+                          >
+                            <Minus className="h-3 w-3" />
+                          </Button>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={999}
+                            value={it.qty}
+                            onChange={(e) =>
+                              updateItemQty(
+                                idx,
+                                Math.max(1, parseInt(e.target.value) || 1),
+                              )
+                            }
+                            className="w-12 h-7 text-center"
+                            dir="ltr"
+                          />
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => updateItemQty(idx, it.qty + 1)}
+                            className="h-7 w-7 p-0"
+                          >
+                            <Plus className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="tabular-nums">
+                          {formatILS(it.price * it.qty)}
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => removeItem(idx)}
+                          className="p-1 text-destructive hover:bg-destructive/10"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
                     </div>
                   ))
                 )}
                 <div className="flex justify-between border-t pt-2 font-bold">
-                  <span>סה״כ</span>
+                  <span>סה״כ פריטים</span>
                   <span className="tabular-nums">
-                    {formatILS(order.total_amount)}
+                    {formatILS(itemsSubtotal)}
                   </span>
+                </div>
+                {order?.delivery_fee && order.delivery_fee > 0 && (
+                  <div className="flex justify-between text-sm text-muted-foreground">
+                    <span>דמי משלוח</span>
+                    <span className="tabular-nums">
+                      {formatILS(order.delivery_fee)}
+                    </span>
+                  </div>
+                )}
+                <div className="flex justify-between border-t pt-1 font-bold">
+                  <span>סה״כ להזמנה</span>
+                  <span className="tabular-nums">{formatILS(itemsTotal)}</span>
                 </div>
               </div>
             </section>

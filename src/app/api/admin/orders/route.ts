@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { SUPABASE_CONFIGURED } from "@/lib/constants";
 import { requireAdmin } from "@/lib/admin-auth";
 import { getStoreMode, isRealtimeMode } from "@/lib/storeMode";
+import { isStallSaleOrder } from "@/lib/utils";
 import type { CartItem, Order } from "@/types";
 
 const CartItemSchema = z.object({
@@ -62,7 +63,9 @@ export async function GET(req: Request) {
         { status: 500 },
       );
     }
-    return NextResponse.json({ orders: (data as Order[]) ?? [] });
+    return NextResponse.json({
+      orders: ((data as Order[]) ?? []).filter((o) => !isStallSaleOrder(o)),
+    });
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: "שגיאת שרת" }, { status: 500 });

@@ -102,3 +102,20 @@ export function generateUUID(): string {
     return v.toString(16);
   });
 }
+
+/**
+ * Direct stall / walk-up sales created via the stall sale endpoint are
+ * indistinguishable from online pickup orders by delivery_type alone.
+ * They are identified by their notes containing "מכירה בדוכן" or by the
+ * placeholder customer name "לקוח דוכן" (the same discriminator used by
+ * the weekly reset / archive sweep logic).
+ */
+export function isStallSaleOrder(order: {
+  notes?: string | null;
+  customer_name?: string | null;
+}): boolean {
+  const notes = typeof order.notes === "string" ? order.notes : "";
+  const customerName =
+    typeof order.customer_name === "string" ? order.customer_name : "";
+  return notes.includes("מכירה בדוכן") || customerName.trim() === "לקוח דוכן";
+}

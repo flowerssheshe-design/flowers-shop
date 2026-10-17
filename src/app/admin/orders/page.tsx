@@ -22,6 +22,7 @@ import {
 } from "@/components/AdminGate";
 import { AdminNav } from "@/components/AdminNav";
 import { AdminOrderForm } from "@/components/AdminOrderForm";
+import { NotesPopover } from "@/components/NotesPopover";
 import { formatILS } from "@/lib/utils";
 import type { Order } from "@/types";
 
@@ -408,17 +409,20 @@ export default function AdminOrdersPage() {
                             {STATUS_OPTIONS.find((s) => s.value === o.status)?.label ?? o.status}
                           </span>
                          </td>
-                         <td className="p-3">
-                           {o.notes ? (
-                             <div className="relative max-w-[180px] cursor-help">
-                               <p className="line-clamp-2 text-xs text-muted-foreground" title={o.notes}>
-                                 {o.notes}
-                               </p>
-                             </div>
-                           ) : (
-                             <span className="text-xs text-muted-foreground">—</span>
-                           )}
-                         </td>
+                          <td className="p-3">
+                            {o.notes ? (
+                              <NotesPopover
+                                notes={o.notes}
+                                trigger={
+                                  <p className="line-clamp-2 text-xs text-muted-foreground max-w-[180px]">
+                                    {o.notes}
+                                  </p>
+                                }
+                              />
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
+                          </td>
                          <td className="p-3 text-xs">
                            {o.payment_method ? (
                              <span className="inline-flex items-center gap-1 rounded-full border border-primary/10 bg-primary/5 px-2 py-0.5 text-xs font-medium">
