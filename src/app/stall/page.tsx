@@ -59,8 +59,14 @@ export default function StallPage() {
   const { toast } = useToast();
 
   const handleAuthError = useCallback(() => {
-    document.cookie = "flowers_stall_auth=; Path=/; Max-Age=0; SameSite=Lax";
-    window.location.reload();
+    try {
+      document.cookie = "flowers_stall_auth=; Path=/; Max-Age=0; SameSite=Lax";
+      localStorage.removeItem("flowers_stall_auth");
+      localStorage.removeItem("flowers_stall_passcode");
+      sessionStorage.removeItem("flowers_stall_passcode");
+      sessionStorage.removeItem("flowers_stall_auth");
+    } catch {}
+    window.dispatchEvent(new Event("stall:unauth"));
   }, []);
 
   const load = useCallback(async () => {
@@ -285,12 +291,14 @@ export default function StallPage() {
   };
 
   const handleLogout = () => {
-    document.cookie =
-      "flowers_stall_auth=; Path=/; Max-Age=0; SameSite=Lax";
-    localStorage.removeItem("flowers_stall_passcode");
-    sessionStorage.removeItem("flowers_stall_passcode");
+    try {
+      document.cookie = "flowers_stall_auth=; Path=/; Max-Age=0; SameSite=Lax";
+      localStorage.removeItem("flowers_stall_auth");
+      localStorage.removeItem("flowers_stall_passcode");
+      sessionStorage.removeItem("flowers_stall_passcode");
+      sessionStorage.removeItem("flowers_stall_auth");
+    } catch {}
     window.dispatchEvent(new Event("stall:unauth"));
-    router.replace("/stall");
   };
 
   const openOrderDetail = (order: Order) => {

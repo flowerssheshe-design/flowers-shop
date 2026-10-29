@@ -26,15 +26,28 @@ export default function PinAuthGate({
   const [authed, setAuthed] = useState(false);
 
   useEffect(() => {
-    const cookieName = `flowers_${pinRole.toLowerCase()}_auth`;
-    const docCookie = document.cookie
-      .split("; ")
-      .find((row) => row.startsWith(`${cookieName}=`));
-    const stored = localStorage.getItem(`flowers_${pinRole.toLowerCase()}_auth`);
-    if (docCookie || stored === "1") {
-      setAuthed(true);
+    try {
+      const cookieName = `flowers_${pinRole.toLowerCase()}_auth`;
+      const docCookie = document.cookie
+        .split("; ")
+        .find((row) => row.startsWith(`${cookieName}=`));
+      const stored = localStorage.getItem(`flowers_${pinRole.toLowerCase()}_auth`);
+      if (docCookie || stored === "1") {
+        setAuthed(true);
+      }
+    } catch {
+      // ignore
     }
-    const handler = () => setAuthed(false);
+    const handler = () => {
+      try {
+        const cookieName = `flowers_${pinRole.toLowerCase()}_auth`;
+        document.cookie = `${cookieName}=; Path=/; Max-Age=0; SameSite=Lax`;
+        localStorage.removeItem(`flowers_${pinRole.toLowerCase()}_auth`);
+      } catch {}
+      setAuthed(false);
+      setPin("");
+      setError(null);
+    };
     window.addEventListener(`${pinRole.toLowerCase()}:unauth`, handler);
     return () => window.removeEventListener(`${pinRole.toLowerCase()}:unauth`, handler);
   }, [pinRole]);
@@ -57,8 +70,10 @@ export default function PinAuthGate({
         setError(data.error || "PIN שגוי");
         return;
       }
-       setAuthed(true);
-       localStorage.setItem(`flowers_${pinRole.toLowerCase()}_auth`, "1");
+      setAuthed(true);
+      try {
+        localStorage.setItem(`flowers_${pinRole.toLowerCase()}_auth`, "1");
+      } catch {}
     } catch {
       setError("שגיאת חיבור");
     } finally {

@@ -44,14 +44,20 @@ export default function AdminProductsPage() {
     setError(null);
     try {
       const res = await fetch("/api/admin/products", { cache: "no-store" });
-      if (!res.ok) throw new Error("טעינת מוצרים נכשלה");
+      if (res.status === 401) {
+        clearAdminAuth();
+        window.location.replace("/admin");
+        return;
+      }
+      if (!res.ok) throw new Error("׳˜׳¢׳™׳ ׳× ׳׳•׳¦׳¨׳™׳ ׳ ׳›׳©׳׳”");
       const productsData = (await res.json()) as { products: Product[] };
       setProducts(productsData.products ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "שגיאה");
+      setError(e instanceof Error ? e.message : "׳©׳’׳™׳׳”");
     } finally {
       setLoading(false);
     }
+  }
   }
 
   async function toggleActive(p: Product) {
