@@ -53,11 +53,10 @@ export default function AdminProductsPage() {
       const productsData = (await res.json()) as { products: Product[] };
       setProducts(productsData.products ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "׳©׳’׳™׳׳”");
+      setError(e instanceof Error ? e.message : "שגיאה");
     } finally {
       setLoading(false);
     }
-  }
   }
 
   async function toggleActive(p: Product) {

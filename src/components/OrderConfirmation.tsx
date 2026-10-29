@@ -32,7 +32,7 @@ function CopyButton({ value }: { value: string }) {
         navigator.clipboard.writeText(value).then(() => {
           setCopied(true);
           setTimeout(() => setCopied(false), 1500);
-        });
+        }).catch(() => {});
       }}
       className="ms-2 inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs hover:bg-muted"
       aria-label="העתק ללוח"

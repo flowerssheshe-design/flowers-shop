@@ -40,7 +40,7 @@ export function ResetPasswordView() {
       if (!cancelled && session) {
         setSessionReady(true);
       }
-    });
+    }).catch(() => {});
 
     const timer = setTimeout(() => {
       if (!cancelled) {
