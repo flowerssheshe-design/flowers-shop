@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { cookies } from "next/headers";
-import { COURIER_PIN } from "@/lib/constants";
+import { requireCourierOrPasscode } from "@/lib/admin-auth";
 import { getStoreMode, isRealtimeMode } from "@/lib/storeMode";
 import type { CartItem, Order } from "@/types";
 
@@ -15,16 +14,8 @@ export async function PATCH(
   req: Request,
   ctx: RouteParams,
 ) {
-  const store = cookies();
-  const cookieOk = store.get("flowers_courier_auth")?.value === "1";
-  const headerPin = req.headers.get("x-courier-passcode");
-  const headerOk = headerPin === COURIER_PIN;
-  if (!cookieOk && !headerOk) {
-    return NextResponse.json(
-      { error: "נדרש זיהוי שליח" },
-      { status: 401 },
-    );
-  }
+  const denied = requireCourierOrPasscode(req);
+  if (denied) return denied;
 
   const { id } = await ctx.params;
 

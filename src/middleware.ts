@@ -1,22 +1,58 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
+import {
+  ADMIN_AUTH_COOKIE,
+  COURIER_AUTH_COOKIE,
+  STAFF_SESSION_COOKIE,
+  STALL_AUTH_COOKIE,
+  grantsAdmin,
+  grantsCourier,
+  grantsStall,
+  verifyTokenEdge,
+  type TokenKind,
+  type TokenPayload,
+} from "@/lib/signed-token-edge";
 
-export const ADMIN_AUTH_COOKIE = "flowers_admin_auth";
-export const STALL_AUTH_COOKIE = "flowers_stall_auth";
-export const COURIER_AUTH_COOKIE = "flowers_courier_auth";
+export { ADMIN_AUTH_COOKIE, STALL_AUTH_COOKIE, COURIER_AUTH_COOKIE };
 
-export function isAdminRequest(req: NextRequest): boolean {
-  return req.cookies.get(ADMIN_AUTH_COOKIE)?.value === "1";
+async function readToken(
+  req: NextRequest,
+  name: string,
+  kind: TokenKind,
+): Promise<TokenPayload | null> {
+  const p = await verifyTokenEdge(req.cookies.get(name)?.value);
+  return p && p.k === kind ? p : null;
 }
 
-export function isStallRequest(req: NextRequest): boolean {
-  return req.cookies.get(STALL_AUTH_COOKIE)?.value === "1";
+async function hasAccess(
+  req: NextRequest,
+  legacyCookie: string,
+  legacyKind: TokenKind,
+  grants: (p: TokenPayload | null) => boolean,
+): Promise<boolean> {
+  if (grants(await readToken(req, legacyCookie, legacyKind))) return true;
+  return grants(await readToken(req, STAFF_SESSION_COOKIE, "staff"));
 }
 
-export function isCourierRequest(req: NextRequest): boolean {
-  return req.cookies.get(COURIER_AUTH_COOKIE)?.value === "1";
+export function isAdminRequest(req: NextRequest): Promise<boolean> {
+  return hasAccess(req, ADMIN_AUTH_COOKIE, "admin", grantsAdmin);
 }
 
-export function middleware(req: NextRequest) {
+export function isStallRequest(req: NextRequest): Promise<boolean> {
+  return hasAccess(req, STALL_AUTH_COOKIE, "stall", grantsStall);
+}
+
+export function isCourierRequest(req: NextRequest): Promise<boolean> {
+  return hasAccess(req, COURIER_AUTH_COOKIE, "courier", grantsCourier);
+}
+
+function redirectTo(req: NextRequest, pathname: string) {
+  const url = req.nextUrl.clone();
+  url.pathname = pathname;
+  url.search = "";
+  return NextResponse.redirect(url);
+}
+
+export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   const isAdminPage =
@@ -24,33 +60,22 @@ export function middleware(req: NextRequest) {
     (pathname.startsWith("/admin/") && !pathname.startsWith("/api/"));
 
   if (isAdminPage) {
-    const authed = isAdminRequest(req);
-    if (authed) return NextResponse.next();
+    // The /admin root renders the login gate itself.
     if (pathname === "/admin") return NextResponse.next();
-    const url = req.nextUrl.clone();
-    url.pathname = "/admin";
-    url.search = "";
-    return NextResponse.redirect(url);
+    if (await isAdminRequest(req)) return NextResponse.next();
+    return redirectTo(req, "/admin");
   }
 
   if (pathname === "/stall" || pathname.startsWith("/stall/")) {
-    const authed = isStallRequest(req);
-    if (authed) return NextResponse.next();
     if (pathname === "/stall") return NextResponse.next();
-    const url = req.nextUrl.clone();
-    url.pathname = "/stall";
-    url.search = "";
-    return NextResponse.redirect(url);
+    if (await isStallRequest(req)) return NextResponse.next();
+    return redirectTo(req, "/stall");
   }
 
   if (pathname === "/courier" || pathname.startsWith("/courier/")) {
-    const authed = isCourierRequest(req);
-    if (authed) return NextResponse.next();
     if (pathname === "/courier") return NextResponse.next();
-    const url = req.nextUrl.clone();
-    url.pathname = "/courier";
-    url.search = "";
-    return NextResponse.redirect(url);
+    if (await isCourierRequest(req)) return NextResponse.next();
+    return redirectTo(req, "/courier");
   }
 
   return NextResponse.next();

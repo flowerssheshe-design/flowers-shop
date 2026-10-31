@@ -37,6 +37,7 @@ import { OrderConfirmation } from "@/components/OrderConfirmation";
 import { LoginDialog } from "@/components/LoginDialog";
 import { AccountUpsellDialog } from "@/components/AccountUpsellDialog";
 import { formatILS } from "@/lib/utils";
+import { applyDiscount } from "@/lib/pricing";
 import {
   type CartItem,
   type DeliveryType,
@@ -57,6 +58,8 @@ type Props = {
   products: Product[];
   user: SessionUser | null;
   qualifiesForMember: boolean;
+  /** Discount percent the customer actually gets (server-computed). */
+  discountPercent?: number;
   completedOrderCount: number;
 };
 
@@ -64,6 +67,7 @@ export function Storefront({
   products,
   user,
   qualifiesForMember,
+  discountPercent = 0,
   completedOrderCount,
 }: Props) {
   const searchParams = useSearchParams();
@@ -259,16 +263,12 @@ export function Storefront({
     }
   }, [searchParams]);
 
-  // Cart items always priced per the user's qualification status.
+  // Cart items priced exactly like the server prices them (see /api/orders).
   const cartItems: CartItem[] = useMemo(() => {
     return products
       .filter((p) => (qty[p.id] ?? 0) > 0)
       .map((p) => {
-        const price = qualifiesForMember
-          ? p.price_member > 0
-            ? p.price_member
-            : p.price_standard
-          : p.price_standard;
+        const price = applyDiscount(p.price_standard, discountPercent);
         return {
           productId: p.id,
           title: p.title,
@@ -277,10 +277,11 @@ export function Storefront({
           image_url: p.image_url,
         };
       });
-  }, [products, qty, qualifiesForMember]);
+  }, [products, qty, discountPercent]);
 
   const subtotal = cartItems.reduce((s, it) => s + it.price * it.qty, 0);
-  const deliveryFee = deliveryType === "delivery" ? settings.delivery_fee ?? 0 : 0;
+  const deliveryFee =
+    deliveryType === "delivery" ? Number(settings.delivery_fee ?? 0) || 0 : 0;
   const total = subtotal + deliveryFee;
   const cartCount = cartItems.reduce((s, it) => s + it.qty, 0);
 
@@ -436,6 +437,7 @@ export function Storefront({
           qtyById={qty}
           onQtyChange={onQtyChange}
           qualifiesForMember={qualifiesForMember}
+          discountPercent={discountPercent}
           stockById={stockById}
         />
       </section>
@@ -625,6 +627,7 @@ export function Storefront({
           submitting={submitting}
           submitError={submitError}
           qualifiesForMember={qualifiesForMember}
+          discountPercent={discountPercent}
           onBackToCart={() => {
             setCheckoutOpen(false);
             setCartOpen(true);
@@ -812,6 +815,7 @@ type CheckoutDialogProps = {
   submitting: boolean;
   submitError: string | null;
   qualifiesForMember: boolean;
+  discountPercent: number;
   onBackToCart: () => void;
   paymentMethod: string;
   setPaymentMethod: (v: "bit" | "paybox" | "cash" | "") => void;
@@ -837,12 +841,14 @@ function CheckoutDialog(props: CheckoutDialogProps) {
     submitting,
     submitError,
     qualifiesForMember,
+    discountPercent,
     onBackToCart,
     paymentMethod,
     setPaymentMethod,
   } = props;
 
-  const deliveryFee = deliveryType === "delivery" ? settings.delivery_fee ?? 0 : 0;
+  const deliveryFee =
+    deliveryType === "delivery" ? Number(settings.delivery_fee ?? 0) || 0 : 0;
   const total = subtotal + deliveryFee;
 
   return (
@@ -1027,10 +1033,10 @@ function CheckoutDialog(props: CheckoutDialogProps) {
                 {formatILS(total)}
               </span>
             </div>
-            {qualifiesForMember && (
+            {qualifiesForMember && discountPercent > 0 && (
               <div className="flex items-center gap-1 text-xs text-gold-foreground">
                 <Sparkles className="h-3 w-3 text-gold" />
-                הנחת קונה קבוע של {settings.member_discount_percent}% הופעלה אוטומטית.
+                הנחת קונה קבוע של {discountPercent}% הופעלה אוטומטית.
               </div>
             )}
           </div>

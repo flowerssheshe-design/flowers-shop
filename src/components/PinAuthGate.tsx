@@ -26,13 +26,12 @@ export default function PinAuthGate({
   const [authed, setAuthed] = useState(false);
 
   useEffect(() => {
+    // The auth cookie is a signed httpOnly token the browser can't read, so the
+    // gate only uses a localStorage UI flag. Pages dispatch `<role>:unauth` when an
+    // API call returns 401 (expired/invalid token), which drops back to the PIN form.
     try {
-      const cookieName = `flowers_${pinRole.toLowerCase()}_auth`;
-      const docCookie = document.cookie
-        .split("; ")
-        .find((row) => row.startsWith(`${cookieName}=`));
       const stored = localStorage.getItem(`flowers_${pinRole.toLowerCase()}_auth`);
-      if (docCookie || stored === "1") {
+      if (stored === "1") {
         setAuthed(true);
       }
     } catch {
@@ -40,8 +39,6 @@ export default function PinAuthGate({
     }
     const handler = () => {
       try {
-        const cookieName = `flowers_${pinRole.toLowerCase()}_auth`;
-        document.cookie = `${cookieName}=; Path=/; Max-Age=0; SameSite=Lax`;
         localStorage.removeItem(`flowers_${pinRole.toLowerCase()}_auth`);
       } catch {}
       setAuthed(false);

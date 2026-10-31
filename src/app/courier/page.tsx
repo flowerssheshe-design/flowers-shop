@@ -16,7 +16,6 @@ export default function CourierPage() {
   const [updating, setUpdating] = useState<string | null>(null);
 
   const handleAuthError = useCallback(() => {
-    document.cookie = "flowers_courier_auth=; Path=/; Max-Age=0; SameSite=Lax";
     localStorage.removeItem("flowers_courier_passcode");
     window.dispatchEvent(new Event("courier:unauth"));
   }, []);
@@ -74,8 +73,13 @@ export default function CourierPage() {
   }
 
   function handleLogout() {
-    document.cookie =
-      "flowers_courier_auth=; Path=/; Max-Age=0; SameSite=Lax";
+    // The auth cookie is httpOnly, so the server has to clear it.
+    void fetch("/api/staff/logout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scope: "courier" }),
+      keepalive: true,
+    }).catch(() => {});
     localStorage.removeItem("flowers_courier_passcode");
     sessionStorage.removeItem("flowers_courier_passcode");
     window.dispatchEvent(new Event("courier:unauth"));

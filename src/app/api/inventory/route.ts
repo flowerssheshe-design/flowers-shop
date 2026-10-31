@@ -1,22 +1,12 @@
 ﻿import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SUPABASE_CONFIGURED } from "@/lib/constants";
+import { requireAdminOrStall } from "@/lib/admin-auth";
 import type { Inventory } from "@/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-
-function requireAdminOrStall(req: Request): NextResponse | null {
-  const cookieStore = (req as any).cookies;
-  const hasAdmin = cookieStore?.get?.("flowers_admin_auth")?.value === "1";
-  const hasStall = cookieStore?.get?.("flowers_stall_auth")?.value === "1";
-  if (hasAdmin || hasStall) return null;
-  return NextResponse.json(
-    { error: "נדרשת הזדהות מנהל או דוכן" },
-    { status: 401 },
-  );
-}
 
 export async function GET() {
   if (!SUPABASE_CONFIGURED) {
@@ -71,7 +61,7 @@ export async function GET() {
 }
 
 export async function PATCH(req: Request) {
-  const denied = requireAdminOrStall(req);
+  const denied = requireAdminOrStall();
   if (denied) return denied;
   if (!SUPABASE_CONFIGURED) {
     return NextResponse.json({ error: "המערכת אינה מוגדרת" }, { status: 503 });

@@ -9,15 +9,16 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+// Customers may only cancel; payment approval and completion are staff actions.
 const PatchSchema = z.object({
-  status: z
-    .enum(["pending_payment", "approved", "completed", "cancelled"])
-    .optional(),
+  status: z.literal("cancelled").optional(),
   customer_name: z.string().min(2).max(100).optional(),
   customer_phone: z.string().min(8).max(30).optional(),
   delivery_address: z.string().max(300).nullish(),
   notes: z.string().max(500).nullish(),
 });
+
+const EDITABLE_STATUSES: string[] = ["pending_payment", "approved"];
 
 async function restoreStockForOrder(
   items: { productId: string; qty: number }[],
@@ -60,18 +61,6 @@ export async function PATCH(
     return NextResponse.json({ error: "נתונים לא תקינים" }, { status: 400 });
   }
 
-  const canEditStatuses: Array<string> = ["pending_payment", "approved"];
-  if (
-    parsed.data.status &&
-    parsed.data.status !== "cancelled" &&
-    !canEditStatuses.includes(parsed.data.status)
-  ) {
-    return NextResponse.json(
-      { error: "לא ניתן לשנות סטטוס ההזמנה זו" },
-      { status: 403 },
-    );
-  }
-
   try {
     const { data: existing, error: fetchErr } = await supabase
       .from("orders")
@@ -84,6 +73,13 @@ export async function PATCH(
       return NextResponse.json(
         { error: "הזמנה לא נמצאה או שאינך בעל ההזמנה" },
         { status: 404 },
+      );
+    }
+
+    if (!EDITABLE_STATUSES.includes(existing.status)) {
+      return NextResponse.json(
+        { error: "לא ניתן לשנות הזמנה זו" },
+        { status: 403 },
       );
     }
 
@@ -100,7 +96,9 @@ export async function PATCH(
       updatePayload.inventory_deducted = false;
     }
 
-    const { data, error } = await supabase
+    // Writes go through the service role: customers have no UPDATE policy on
+    // orders, so ownership is enforced by the user_id filter here.
+    const { data, error } = await createAdminClient()
       .from("orders")
       .update(updatePayload)
       .eq("id", id)
@@ -160,12 +158,19 @@ export async function DELETE(
       );
     }
 
+    if (!EDITABLE_STATUSES.includes(existing.status)) {
+      return NextResponse.json(
+        { error: "לא ניתן לבטל הזמנה זו" },
+        { status: 403 },
+      );
+    }
+
     const existingItems = (existing.items ?? []) as CartItem[];
     if (existing.inventory_deducted === true && existingItems.length > 0) {
       await restoreStockForOrder(existingItems);
     }
 
-    const { error } = await supabase
+    const { error } = await createAdminClient()
       .from("orders")
       .update({ status: "cancelled", inventory_deducted: false })
       .eq("id", id)

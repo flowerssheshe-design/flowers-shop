@@ -60,7 +60,6 @@ export default function StallPage() {
 
   const handleAuthError = useCallback(() => {
     try {
-      document.cookie = "flowers_stall_auth=; Path=/; Max-Age=0; SameSite=Lax";
       localStorage.removeItem("flowers_stall_auth");
       localStorage.removeItem("flowers_stall_passcode");
       sessionStorage.removeItem("flowers_stall_passcode");
@@ -292,7 +291,13 @@ export default function StallPage() {
 
   const handleLogout = () => {
     try {
-      document.cookie = "flowers_stall_auth=; Path=/; Max-Age=0; SameSite=Lax";
+      // The auth cookie is httpOnly, so the server has to clear it.
+      void fetch("/api/staff/logout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scope: "stall" }),
+        keepalive: true,
+      }).catch(() => {});
       localStorage.removeItem("flowers_stall_auth");
       localStorage.removeItem("flowers_stall_passcode");
       sessionStorage.removeItem("flowers_stall_passcode");

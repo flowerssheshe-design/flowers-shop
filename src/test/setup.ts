@@ -4,12 +4,20 @@ import "@testing-library/jest-dom";
 // Mock Next.js server-only modules
 vi.mock("server-only", () => ({}));
 
-// Mock next/headers
-vi.mock("next/headers", () => ({
-  cookies: () => ({
-    get: (name: string) => (name === "flowers_stall_auth" ? { value: "1" } : undefined),
-  }),
-}));
+// Mock next/headers — cookie values come from a mutable jar (src/test/cookie-mock.ts).
+// Default jar: { flowers_stall_auth: "1" } (an unsigned legacy value, which is no
+// longer accepted by the auth helpers). Use setTestCookies() to change it.
+vi.mock("next/headers", async () => {
+  const { testCookies } = await import("./cookie-mock");
+  return {
+    cookies: () => ({
+      get: (name: string) => {
+        const value = testCookies.get(name);
+        return value === undefined ? undefined : { name, value };
+      },
+    }),
+  };
+});
 
 // Mock next/navigation
 vi.mock("next/navigation", () => ({

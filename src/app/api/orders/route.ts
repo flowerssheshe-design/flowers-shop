@@ -2,13 +2,21 @@
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { SUPABASE_CONFIGURED, CLUB_DISCOUNT_THRESHOLD } from "@/lib/constants";
+import { SUPABASE_CONFIGURED } from "@/lib/constants";
+import { getUserOrderStats } from "@/lib/auth";
+import { getServerSettings } from "@/lib/settings-server";
+import { priceCart, type PricingProduct } from "@/lib/pricing";
 import { getStoreMode, isRealtimeMode } from "@/lib/storeMode";
 import type { Order } from "@/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+
+// Client-sent `price`, `total_amount`, `delivery_fee` and `is_member` are
+// accepted for backward compatibility but never trusted: the server re-prices
+// the cart from the DB. `total_amount` is only used to detect a stale cart.
+const PRICE_TOLERANCE = 0.5;
 
 const CartItemSchema = z.object({
   productId: z.string().uuid(),
@@ -74,18 +82,61 @@ export async function POST(req: Request) {
     status = "approved";
   }
 
-  let qualifies = false;
+  // Server-side pricing: products from the DB, discount from the logged-in
+  // user, delivery fee from system settings.
+  let products: (PricingProduct & { is_active: boolean })[];
+  try {
+    const admin = createAdminClient();
+    const ids = Array.from(new Set(body.items.map((it) => it.productId)));
+    const { data, error } = await admin
+      .from("products")
+      .select("id, title, price_standard, image_url, is_active")
+      .in("id", ids);
+    if (error) {
+      console.error("Order products lookup error:", error);
+      return NextResponse.json(
+        { error: "שגיאת שרת פנימית" },
+        { status: 500 },
+      );
+    }
+    products = ((data ?? []) as (PricingProduct & { is_active: boolean })[])
+      .filter((p) => p.is_active);
+  } catch (e) {
+    console.error(e);
+    return NextResponse.json(
+      { error: "שגיאת שרת פנימית" },
+      { status: 500 },
+    );
+  }
+
+  let discountPercent = 0;
   if (user) {
     try {
-      const admin = createAdminClient();
-      const { data: count } = await admin.rpc("user_completed_order_count", {
-        uid: user.id,
-      });
-      qualifies = Number(count ?? 0) >= CLUB_DISCOUNT_THRESHOLD;
+      const stats = await getUserOrderStats(user.id);
+      discountPercent = stats.discountPercent;
     } catch {
-      qualifies = false;
+      discountPercent = 0;
     }
   }
+
+  const settings = await getServerSettings();
+  const deliveryFee =
+    body.delivery_type === "delivery" ? Number(settings.delivery_fee) || 0 : 0;
+
+  const priced = priceCart(products, body.items, discountPercent, deliveryFee);
+  if (priced.missing.length > 0) {
+    return NextResponse.json(
+      { error: "אחד המוצרים אינו זמין יותר" },
+      { status: 400 },
+    );
+  }
+  if (Math.abs(body.total_amount - priced.total) > PRICE_TOLERANCE) {
+    return NextResponse.json(
+      { error: "המחירים התעדכנו. רעננו את הדף ונסו שוב." },
+      { status: 409 },
+    );
+  }
+  const qualifies = discountPercent > 0;
 
   // Step 1: Create the order first (without deducting stock).
   // Stock is only deducted for orders that are already confirmed (approved),
@@ -101,10 +152,10 @@ export async function POST(req: Request) {
         customer_name: body.customer_name,
         customer_phone: body.customer_phone,
         delivery_address: body.delivery_address ?? null,
-        items: body.items,
-        total_amount: body.total_amount,
+        items: priced.items,
+        total_amount: priced.total,
         delivery_type: body.delivery_type,
-        delivery_fee: body.delivery_fee,
+        delivery_fee: priced.deliveryFee,
         is_member: qualifies,
         notes: body.notes ?? null,
         status,
@@ -139,12 +190,12 @@ export async function POST(req: Request) {
   const storeMode = await getStoreMode();
   const isRealtime = isRealtimeMode(storeMode);
   const shouldDeductAtCreation =
-    isRealtime && body.items.length > 0;
+    isRealtime && priced.items.length > 0;
 
   if (shouldDeductAtCreation) {
     const admin = createAdminClient();
     const deductedItems: { productId: string; qty: number }[] = [];
-    for (const item of body.items) {
+    for (const item of priced.items) {
       const { data: after, error: decErr } = await admin.rpc("decrement_inventory", {
         p_product_id: item.productId,
         p_qty: item.qty,

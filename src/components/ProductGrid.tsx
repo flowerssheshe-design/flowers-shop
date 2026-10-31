@@ -8,6 +8,7 @@ type Props = {
   qtyById: Record<string, number>;
   onQtyChange: (id: string, qty: number) => void;
   qualifiesForMember: boolean;
+  discountPercent?: number;
   stockById?: Record<string, number>;
 };
 
@@ -16,6 +17,7 @@ export function ProductGrid({
   qtyById,
   onQtyChange,
   qualifiesForMember,
+  discountPercent = 0,
   stockById = {},
 }: Props) {
   if (products.length === 0) {
@@ -36,6 +38,7 @@ export function ProductGrid({
           qty={qtyById[p.id] ?? 0}
           onChange={(q) => onQtyChange(p.id, q)}
           qualifiesForMember={qualifiesForMember}
+          discountPercent={discountPercent}
           stock={stockById[p.id] ?? 0}
           priority={i < 3}
         />

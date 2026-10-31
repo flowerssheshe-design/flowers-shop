@@ -3,7 +3,7 @@ import { getSessionUser, getUserOrderStats } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SUPABASE_CONFIGURED } from "@/lib/constants";
 import { ProfileView } from "@/components/ProfileView";
-import { CLUB_DISCOUNT_THRESHOLD, type Order } from "@/types";
+import type { Order } from "@/types";
 
 export const dynamic = "force-dynamic";
 
@@ -40,7 +40,7 @@ export default async function ProfilePage() {
       orders={orders}
       completedCount={stats.completedCount}
       qualifies={stats.qualifies}
-      threshold={CLUB_DISCOUNT_THRESHOLD}
+      threshold={stats.threshold}
     />
   );
 }

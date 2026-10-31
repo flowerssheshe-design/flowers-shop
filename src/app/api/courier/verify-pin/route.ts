@@ -1,22 +1,51 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
+import { z } from "zod";
 import { COURIER_PIN } from "@/lib/constants";
+import {
+  COURIER_AUTH_COOKIE,
+  STAFF_COOKIE_OPTIONS,
+  safeEqual,
+  staffSecretMissingResponse,
+} from "@/lib/admin-auth";
+import {
+  STAFF_TOKEN_TTL_SECONDS,
+  isStaffSecretMissingError,
+  signToken,
+} from "@/lib/signed-token";
 
-export async function POST(req: NextRequest) {
-  const { pin } = await req.json();
-  if (!COURIER_PIN || pin !== COURIER_PIN) {
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+const Body = z.object({ pin: z.string().min(1).max(50) });
+
+export async function POST(req: Request) {
+  const json = await req.json().catch(() => null);
+  const parsed = Body.safeParse(json);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { success: false, error: "בקשה לא תקינה" },
+      { status: 400 },
+    );
+  }
+
+  const configured = (COURIER_PIN ?? "").trim();
+  if (!configured || !safeEqual(parsed.data.pin.trim(), configured)) {
     return NextResponse.json(
       { success: false, error: "PIN שגוי" },
       { status: 401 }
     );
   }
 
+  let token: string;
+  try {
+    token = signToken({ k: "courier" }, STAFF_TOKEN_TTL_SECONDS);
+  } catch (e) {
+    if (isStaffSecretMissingError(e)) return staffSecretMissingResponse();
+    throw e;
+  }
+
   const res = NextResponse.json({ success: true });
-  res.cookies.set("flowers_courier_auth", "1", {
-    httpOnly: false,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: 60 * 60 * 24 * 7,
-    path: "/",
-  });
+  res.cookies.set(COURIER_AUTH_COOKIE, token, STAFF_COOKIE_OPTIONS);
   return res;
 }

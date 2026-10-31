@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
+import { requireStall } from "@/lib/admin-auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SUPABASE_CONFIGURED } from "@/lib/constants";
 import type { Order } from "@/types";
@@ -9,14 +9,8 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export async function GET() {
-  try {
-    const store = cookies();
-    if (store.get("flowers_stall_auth")?.value !== "1") {
-      return NextResponse.json({ error: "_permits_zip_identification" }, { status: 401 });
-    }
-  } catch {
-    return NextResponse.json({ error: "permits_zip_identification" }, { status: 401 });
-  }
+  const denied = requireStall();
+  if (denied) return denied;
 
   if (!SUPABASE_CONFIGURED) {
     return NextResponse.json({ orders: [] });

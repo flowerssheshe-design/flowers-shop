@@ -35,10 +35,12 @@ export default async function HomePage() {
 
   let qualifies = false;
   let completedCount = 0;
+  let discountPercent = 0;
   if (user) {
     const stats = await getUserOrderStats(user.id);
     qualifies = stats.qualifies;
     completedCount = stats.completedCount;
+    discountPercent = stats.discountPercent;
   }
 
   return (
@@ -47,6 +49,7 @@ export default async function HomePage() {
         products={products}
         user={user}
         qualifiesForMember={qualifies}
+        discountPercent={discountPercent}
         completedOrderCount={completedCount}
       />
     </Suspense>

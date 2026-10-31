@@ -11,12 +11,6 @@ export const ADMIN_AUTH_KEY = "flowers-admin-auth";
 export const ADMIN_AUTH_COOKIE = "flowers_admin_auth";
 export const ADMIN_AUTH_TTL_DAYS = 7;
 
-function setAdminCookie() {
-  if (typeof document === "undefined") return;
-  const maxAge = ADMIN_AUTH_TTL_DAYS * 24 * 60 * 60;
-  document.cookie = `${ADMIN_AUTH_COOKIE}=1; Path=/; Max-Age=${maxAge}; SameSite=Lax`;
-}
-
 export function isAdminAuthenticated(): boolean {
   if (typeof window === "undefined") return false;
   return sessionStorage.getItem(ADMIN_AUTH_KEY) === "1";
@@ -25,7 +19,13 @@ export function isAdminAuthenticated(): boolean {
 export function clearAdminAuth() {
   if (typeof window !== "undefined") {
     sessionStorage.removeItem(ADMIN_AUTH_KEY);
-    document.cookie = `${ADMIN_AUTH_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax`;
+    // The auth cookie is httpOnly (signed by the server), so ask the server to clear it.
+    void fetch("/api/staff/logout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scope: "admin" }),
+      keepalive: true,
+    }).catch(() => {});
   }
 }
 
@@ -50,8 +50,8 @@ export default function AdminGate() {
         const t = await res.json().catch(() => ({}));
         throw new Error(t.error ?? "קוד שגוי");
       }
+      // The server sets the signed httpOnly auth cookie; we only keep a UI flag.
       sessionStorage.setItem(ADMIN_AUTH_KEY, "1");
-      setAdminCookie();
       router.replace("/admin/products");
     } catch (e) {
       setError(e instanceof Error ? e.message : "שגיאה");

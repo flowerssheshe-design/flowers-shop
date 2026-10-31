@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { formatILS } from "@/lib/utils";
-import { CLUB_DISCOUNT_THRESHOLD, MEMBER_DISCOUNT_PERCENT } from "@/types";
+import { useSystemSettings } from "@/lib/useSystemSettings";
 
 type Props = {
   open: boolean;
@@ -34,9 +34,10 @@ export function AccountUpsellDialog({
   onLogin,
   onContinueAsGuest,
 }: Props) {
-  const futureSavings = Math.round(
-    (cartSubtotal * MEMBER_DISCOUNT_PERCENT) / 100,
-  );
+  const settings = useSystemSettings();
+  const memberPercent = Number(settings.member_discount_percent ?? 0) || 0;
+  const threshold = Number(settings.club_discount_threshold ?? 0) || 0;
+  const futureSavings = Math.round((cartSubtotal * memberPercent) / 100);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -49,15 +50,15 @@ export function AccountUpsellDialog({
           <div className="rounded-xl border border-gold/40 bg-gold/10 p-3 text-sm">
             <div className="mb-1 inline-flex items-center gap-1.5 font-semibold text-gold-foreground">
               <Sparkles className="h-4 w-4 text-gold" />
-              הטבת חבר קבוע מופעלת אחרי {CLUB_DISCOUNT_THRESHOLD} הזמנות
+              הטבת חבר קבוע מופעלת אחרי {threshold} הזמנות
             </div>
             <p className="text-xs text-foreground/80">
-              תקבלו <strong>10% הנחה</strong> אוטומטית בקופה בכל הזמנה — לכל החיים.
+              תקבלו <strong>{memberPercent}% הנחה</strong> אוטומטית בקופה בכל הזמנה — לכל החיים.
             </p>
           </div>
 
           <ul className="space-y-2 text-sm">
-            <Bullet text="הנחה של 10% בקופה אחרי 3 הזמנות ראשונות" />
+            <Bullet text={`הנחה של ${memberPercent}% בקופה אחרי ${threshold} הזמנות ראשונות`} />
             <Bullet text="מעקב חי אחר כל ההזמנות והסטטוס שלהן" />
             <Bullet text="שמירת פרטי התקשרות והכתובת — להזמנה מהירה" />
             <Bullet text="עדכונים על זרים חדשים ומבצעים לקראת שבת" />

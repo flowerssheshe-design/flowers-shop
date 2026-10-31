@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
+import { requireStall } from "@/lib/admin-auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SUPABASE_CONFIGURED } from "@/lib/constants";
 import { z } from "zod";
@@ -16,14 +16,8 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export async function POST(req: Request) {
-  try {
-    const store = cookies();
-    if (store.get("flowers_stall_auth")?.value !== "1") {
-      return NextResponse.json({ error: "נדרש זיהוי דוכן" }, { status: 401 });
-    }
-  } catch {
-    return NextResponse.json({ error: "נדרש זיהוי דוכן" }, { status: 401 });
-  }
+  const denied = requireStall();
+  if (denied) return denied;
 
   if (!SUPABASE_CONFIGURED) {
     return NextResponse.json({ error: "המערכת אינה מוגדרת" }, { status: 503 });

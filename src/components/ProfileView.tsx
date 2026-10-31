@@ -19,7 +19,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { SiteHeader } from "@/components/SiteHeader";
 import { formatILS } from "@/lib/utils";
-import { CLUB_DISCOUNT_THRESHOLD, type Order, type SessionUser } from "@/types";
+import { type Order, type SessionUser } from "@/types";
 import { BUSINESS_PHONE } from "@/lib/constants";
 
 type Props = {
@@ -185,7 +185,9 @@ export function ProfileView({
               </h2>
               <p className="mt-1 text-sm text-foreground/80">
                 {qualifies
-                  ? `ביצעתם ${CLUB_DISCOUNT_THRESHOLD} הזמנות או יותר — מחיר לקוח קבוע מופעל אוטומטית בקופה.`
+                  ? completedCount >= threshold
+                    ? `ביצעתם ${threshold} הזמנות או יותר — מחיר לקוח קבוע מופעל אוטומטית בקופה.`
+                    : "מחיר לקוח קבוע מופעל אוטומטית בקופה."
                   : `ביצעתם ${completedCount} הזמנות עד כה. השלימו עוד ${remaining} כדי לקבל את ההנחה.`}
               </p>
             </div>

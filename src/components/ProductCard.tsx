@@ -5,6 +5,7 @@ import { ChevronDown, ChevronUp, Minus, Plus, ShoppingBag, Store, Truck, X } fro
 import { Button } from "@/components/ui/button";
 import { ImageCarousel } from "@/components/ImageCarousel";
 import { formatILS } from "@/lib/utils";
+import { applyDiscount } from "@/lib/pricing";
 import { type Product } from "@/types";
 import { useCycleTime } from "@/lib/cycleTime";
 import { useSystemSettings } from "@/lib/useSystemSettings";
@@ -15,6 +16,8 @@ type Props = {
   qty: number;
   onChange: (qty: number) => void;
   qualifiesForMember: boolean;
+  /** Discount percent the customer actually gets (server-computed). */
+  discountPercent?: number;
   stock?: number;
   /** Eagerly preload the cover image (above-the-fold cards only). */
   priority?: boolean;
@@ -25,19 +28,18 @@ export function ProductCard({
   qty,
   onChange,
   qualifiesForMember,
+  discountPercent: customerDiscountPercent = 0,
   stock = 0,
   priority = false,
 }: Props) {
-  const hasMemberPrice =
-    product.price_member > 0 && product.price_member < product.price_standard;
-  const showMemberPrice = qualifiesForMember && hasMemberPrice;
-  const discountPercent = showMemberPrice
-    ? Math.round(
-        ((product.price_standard - product.price_member) /
-          product.price_standard) *
-          100,
-      )
-    : 0;
+  // Same rule the server uses in /api/orders (never the stored price_member).
+  const discountedPrice = applyDiscount(
+    product.price_standard,
+    customerDiscountPercent,
+  );
+  const showMemberPrice =
+    qualifiesForMember && discountedPrice < product.price_standard;
+  const discountPercent = showMemberPrice ? customerDiscountPercent : 0;
 
   const settings = useSystemSettings();
   const { isPreorderPhase: inPreorder } = useCycleTime();
@@ -142,7 +144,7 @@ export function ProductCard({
                   מחיר לקוח קבוע
                 </span>
                 <span className="brand-serif text-2xl font-bold text-primary tabular-nums">
-                  {formatILS(product.price_member)}
+                  {formatILS(discountedPrice)}
                 </span>
               </div>
               {discountPercent > 0 && (
@@ -163,7 +165,7 @@ export function ProductCard({
 
         {showMemberPrice ? (
           <p className="text-[11px] leading-snug text-gold-foreground">
-            *הנחת לקוח קבוע של {settings.member_discount_percent}% מוענקת לכם באופן
+            *הנחת לקוח קבוע של {discountPercent}% מוענקת לכם באופן
             אוטומטי — {discountPercent}% הנחה על כל הזמנה
           </p>
         ) : (
