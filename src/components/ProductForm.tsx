@@ -12,18 +12,33 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { createClient } from "@/lib/supabase/client";
 import { ImageCarousel } from "@/components/ImageCarousel";
-import { SUPABASE_CONFIGURED, MEMBER_DISCOUNT_PERCENT } from "@/lib/constants";
+import { SUPABASE_CONFIGURED } from "@/lib/constants";
 import { calculateMemberPrice, calculateDiscountAmount, formatILS, generateUUID } from "@/lib/utils";
+import { useSystemSettings } from "@/lib/useSystemSettings";
 import type { Product } from "@/types";
 
 type Props = {
   mode: "create" | "edit";
-  initial?: Product;
+  initial?: Product & { default_order_qty?: number | null };
   nextSortOrder?: number;
+  /** Where "back" and "after save" go. Defaults to the old admin list. */
+  backHref?: string;
+  /** Render without the page header/background (inside the staff shell). */
+  embedded?: boolean;
+  /** Show and save "default qty for the supplier order" (staff area only). */
+  withDefaultOrderQty?: boolean;
 };
 
-export function ProductForm({ mode, initial, nextSortOrder = 0 }: Props) {
+export function ProductForm({
+  mode,
+  initial,
+  nextSortOrder = 0,
+  backHref = "/admin/products",
+  embedded = false,
+  withDefaultOrderQty = false,
+}: Props) {
   const router = useRouter();
+  const memberPercent = Number(useSystemSettings().member_discount_percent) || 0;
   const [title, setTitle] = useState(initial?.title ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [priceStandard, setPriceStandard] = useState(
@@ -45,34 +60,37 @@ export function ProductForm({ mode, initial, nextSortOrder = 0 }: Props) {
   const [sortOrder, setSortOrder] = useState(
     initial?.sort_order ?? nextSortOrder,
   );
+  const [defaultOrderQty, setDefaultOrderQty] = useState<string>(
+    String(initial?.default_order_qty ?? 0),
+  );
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!initial && mode === "edit") {
-      router.replace("/admin/products");
+      router.replace(backHref);
     }
-  }, [initial, mode, router]);
+  }, [initial, mode, router, backHref]);
 
   // Keep the preview on the first slide whenever the gallery changes.
   useEffect(() => {
     setPreviewIndex(0);
   }, [imageUrls]);
 
-  const priceMember = calculateMemberPrice(priceStandard, MEMBER_DISCOUNT_PERCENT);
-  const discountAmount = calculateDiscountAmount(priceStandard, MEMBER_DISCOUNT_PERCENT);
+  const priceMember = calculateMemberPrice(priceStandard, memberPercent);
+  const discountAmount = calculateDiscountAmount(priceStandard, memberPercent);
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
     e.target.value = "";
     if (!files.length) return;
     if (!SUPABASE_CONFIGURED) {
-      setError("העלאת תמונות אינה זמינה — חסרים משתני סביבה");
+      setError("העלאת תמונות לא זמינה כרגע (המערכת לא מחוברת לאחסון).");
       return;
     }
     if (imageUrls.length + files.length > 10) {
-      setError("ניתן להוסיף עד 10 תמונות לזר");
+      setError("אפשר להוסיף עד 10 תמונות לזר.");
       return;
     }
     setUploading(true);
@@ -100,8 +118,8 @@ export function ProductForm({ mode, initial, nextSortOrder = 0 }: Props) {
     } catch (err) {
       setError(
         err instanceof Error
-          ? `העלאה נכשלה: ${err.message}`
-          : "העלאה נכשלה",
+          ? `ההעלאה נכשלה: ${err.message}`
+          : "ההעלאה נכשלה. נסו שוב.",
       );
     } finally {
       setUploading(false);
@@ -124,6 +142,11 @@ export function ProductForm({ mode, initial, nextSortOrder = 0 }: Props) {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    const qty = Number(defaultOrderQty);
+    if (withDefaultOrderQty && (!Number.isInteger(qty) || qty < 0)) {
+      setError("כמות ברירת המחדל להזמנה מהספק חייבת להיות מספר שלם, 0 ומעלה.");
+      return;
+    }
     setSubmitting(true);
     try {
       const payload = {
@@ -139,6 +162,7 @@ export function ProductForm({ mode, initial, nextSortOrder = 0 }: Props) {
       };
 
       let res: Response;
+      let productId: string | undefined = initial?.id;
       if (mode === "create") {
         res = await fetch("/api/admin/products", {
           method: "POST",
@@ -149,9 +173,9 @@ export function ProductForm({ mode, initial, nextSortOrder = 0 }: Props) {
           ? await res.json().catch(() => null)
           : null) as { product?: { id: string } } | null;
         if (!res.ok) {
-          const t = await res.json().catch(() => ({}));
-          throw new Error(t.error ?? "שמירה נכשלה");
+          throw new Error("השמירה נכשלה. בדקו את הפרטים ונסו שוב.");
         }
+        productId = created?.product?.id;
       } else if (initial) {
         res = await fetch(`/api/admin/products/${initial.id}`, {
           method: "PATCH",
@@ -160,40 +184,37 @@ export function ProductForm({ mode, initial, nextSortOrder = 0 }: Props) {
         });
         if (!res.ok) {
           const t = await res.json().catch(() => ({}));
-          throw new Error(t.error ?? "שמירה נכשלה");
+          throw new Error(t.error ?? "השמירה נכשלה. בדקו את הפרטים ונסו שוב.");
         }
       } else {
-        throw new Error("חסרים נתוני מוצר");
+        throw new Error("חסרים פרטי המוצר.");
       }
 
-      router.push("/admin/products");
+      // default_order_qty is saved through the staff API (the admin product API ignores it).
+      if (withDefaultOrderQty && productId && qty !== Number(initial?.default_order_qty ?? 0)) {
+        const r = await fetch("/api/staff/supplier/defaults", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ items: [{ product_id: productId, default_order_qty: qty }] }),
+        });
+        if (!r.ok) {
+          throw new Error("הזר נשמר, אבל כמות ברירת המחדל לספק לא נשמרה. נסו לשמור שוב.");
+        }
+      }
+
+      router.push(backHref);
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "שגיאה");
+      setError(err instanceof Error ? err.message : "השמירה נכשלה. נסו שוב.");
     } finally {
       setSubmitting(false);
     }
   }
 
-  return (
-    <main className="min-h-screen bg-muted/30">
-      <header className="border-b bg-background">
-        <div className="container flex items-center justify-between py-3">
-          <h1 className="text-lg font-bold">
-            {mode === "create" ? "מוצר חדש" : `עריכה: ${initial?.title ?? ""}`}
-          </h1>
-          <Button asChild variant="ghost" size="sm">
-            <Link href="/admin/products">
-              <ArrowRight className="h-4 w-4" />
-              חזרה
-            </Link>
-          </Button>
-        </div>
-      </header>
-
-      <form onSubmit={submit} className="container max-w-xl space-y-4 py-4">
+  const formBody = (
+      <form onSubmit={submit} className={embedded ? "max-w-xl space-y-4" : "container max-w-xl space-y-4 py-4"}>
         <div>
-          <Label htmlFor="title">שם המוצר</Label>
+          <Label htmlFor="title">שם הזר</Label>
           <Input
             id="title"
             value={title}
@@ -213,7 +234,7 @@ export function ProductForm({ mode, initial, nextSortOrder = 0 }: Props) {
         </div>
 
         <div className="space-y-2 rounded-lg border p-3">
-          <Label htmlFor="ps">מחיר ליחידה</Label>
+          <Label htmlFor="ps">מחיר (₪)</Label>
           <Input
             id="ps"
             type="number"
@@ -228,13 +249,13 @@ export function ProductForm({ mode, initial, nextSortOrder = 0 }: Props) {
              <span className="font-medium text-foreground">
                {priceStandard > 0 ? formatILS(priceMember) : "—"}
              </span>{" "}
-             (הנחה של {MEMBER_DISCOUNT_PERCENT}% — חיסכון{" "}
+             (הנחה של {memberPercent}%, חיסכון של{" "}
              {priceStandard > 0 ? formatILS(discountAmount) : "—"})
            </div>
           </div>
 
            <div className="space-y-2 rounded-lg border p-3">
-             <Label htmlFor="cp">מחיר עלות לספק (₪)</Label>
+             <Label htmlFor="cp">מחיר קנייה מהספק (₪)</Label>
              <Input
                id="cp"
                type="number"
@@ -245,6 +266,24 @@ export function ProductForm({ mode, initial, nextSortOrder = 0 }: Props) {
              />
            </div>
 
+           {withDefaultOrderQty && (
+             <div className="space-y-2 rounded-lg border p-3">
+               <Label htmlFor="doq">כמות ברירת מחדל להזמנה מהספק</Label>
+               <Input
+                 id="doq"
+                 type="number"
+                 inputMode="numeric"
+                 min={0}
+                 step={1}
+                 value={defaultOrderQty}
+                 onChange={(e) => setDefaultOrderQty(e.target.value)}
+               />
+               <p className="text-xs text-muted-foreground">
+                 כמה להזמין כל שבוע מעבר להזמנות מראש. אפשר לשנות בכל שבוע במסך ההזמנה מהספק.
+               </p>
+             </div>
+           )}
+
            <div className="space-y-3 rounded-lg border p-3">
              <div className="flex items-center justify-between">
                <Label>תמונות</Label>
@@ -253,7 +292,7 @@ export function ProductForm({ mode, initial, nextSortOrder = 0 }: Props) {
                </span>
              </div>
              <p className="text-xs text-muted-foreground">
-               התמונות להמחשה בלבד
+               התמונה הראשונה היא התמונה הראשית בחנות.
              </p>
               <div className="relative overflow-hidden rounded-md">
                 <ImageCarousel
@@ -285,7 +324,7 @@ export function ProductForm({ mode, initial, nextSortOrder = 0 }: Props) {
                         onClick={() => {
                           removeImageUrl(index);
                         }}
-                        aria-label={`הסר תמונה ${index + 1}`}
+                        aria-label={`הסרת תמונה ${index + 1}`}
                         className="absolute end-1 top-1 rounded-full bg-background/90 p-1 text-destructive shadow-sm"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -293,7 +332,7 @@ export function ProductForm({ mode, initial, nextSortOrder = 0 }: Props) {
                       <button
                         type="button"
                         onClick={() => setPreviewIndex(index)}
-                        aria-label={`הצג תמונה ${index + 1}`}
+                        aria-label={`הצגת תמונה ${index + 1}`}
                         aria-current={index === previewIndex ? "true" : undefined}
                         className={`absolute inset-0 rounded-md transition-opacity duration-200 ease-out ${
                           index === previewIndex
@@ -307,7 +346,7 @@ export function ProductForm({ mode, initial, nextSortOrder = 0 }: Props) {
               )}
              <div>
                <Label htmlFor="url" className="text-xs">
-                 או הדביקו קישור לתמונה נוספת
+                 או הדביקו קישור לתמונה
                </Label>
                <div className="flex gap-2">
                  <Input
@@ -325,7 +364,7 @@ export function ProductForm({ mode, initial, nextSortOrder = 0 }: Props) {
                    onClick={addImageUrl}
                    disabled={!imageUrlInput.trim() || imageUrls.length >= 10 || uploading}
                  >
-                   הוסף
+                   הוספה
                  </Button>
                </div>
              </div>
@@ -339,7 +378,7 @@ export function ProductForm({ mode, initial, nextSortOrder = 0 }: Props) {
                  ) : (
                    <ImagePlus className="h-4 w-4" />
                  )}
-                 {uploading ? "מעלה…" : "העלאת קבצים מהמחשב"}
+                 {uploading ? "מעלה…" : "העלאת תמונות"}
                </Label>
                <Input
                  id="file"
@@ -386,9 +425,29 @@ export function ProductForm({ mode, initial, nextSortOrder = 0 }: Props) {
           ) : (
             <Save className="h-4 w-4" />
           )}
-          {mode === "create" ? "צור מוצר" : "שמור שינויים"}
+          {mode === "create" ? "יצירת הזר" : "שמירת השינויים"}
         </Button>
       </form>
+  );
+
+  if (embedded) return formBody;
+
+  return (
+    <main className="min-h-screen bg-muted/30">
+      <header className="border-b bg-background">
+        <div className="container flex items-center justify-between py-3">
+          <h1 className="text-lg font-bold">
+            {mode === "create" ? "זר חדש" : `עריכה: ${initial?.title ?? ""}`}
+          </h1>
+          <Button asChild variant="ghost" size="sm">
+            <Link href={backHref}>
+              <ArrowRight className="h-4 w-4" />
+              חזרה
+            </Link>
+          </Button>
+        </div>
+      </header>
+      {formBody}
     </main>
   );
 }

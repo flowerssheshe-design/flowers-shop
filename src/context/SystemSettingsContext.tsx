@@ -48,6 +48,13 @@ export function SystemSettingsProvider({ children }: { children: ReactNode }) {
             same_day_deadline: readValue(s.same_day_deadline, DEFAULTS.same_day_deadline),
             announcement_banner_text: readValue(s.announcement_banner_text, DEFAULTS.announcement_banner_text),
             is_stall_open: readBool(s.is_stall_open, DEFAULTS.is_stall_open),
+            supplier_order_day: Number(readValue(s.supplier_order_day, DEFAULTS.supplier_order_day)),
+            supplier_order_time: readValue(s.supplier_order_time, DEFAULTS.supplier_order_time),
+            week_close_day: Number(readValue(s.week_close_day, DEFAULTS.week_close_day)),
+            week_close_time: readValue(s.week_close_time, DEFAULTS.week_close_time),
+            stall_bit_number: readValue(s.stall_bit_number, DEFAULTS.stall_bit_number),
+            stall_bit_qr_url: readValue(s.stall_bit_qr_url, DEFAULTS.stall_bit_qr_url),
+            stall_hours: readValue(s.stall_hours, DEFAULTS.stall_hours),
           });
         }
       }

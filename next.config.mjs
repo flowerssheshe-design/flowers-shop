@@ -1,5 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // A separate build folder lets "next build" run while the dev server uses .next.
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   reactStrictMode: true,
   images: {
     // Modern formats first, WebP as the safe fallback for older browsers.

@@ -62,3 +62,13 @@ vi.mock("@/lib/storeMode", () => ({
   getStoreMode: vi.fn().mockResolvedValue("realtime"),
   isRealtimeMode: () => true,
 }));
+// Order "thank you" messages are fire-and-forget side effects of /api/orders.
+vi.mock("@/lib/staff/marketing/order-thanks", () => ({
+  sendOrderThanks: vi.fn().mockResolvedValue(undefined),
+}));
+
+// Marking the supplier order at its time is a side effect of /api/orders and
+// the store-mode route; route tests don't exercise it.
+vi.mock("@/lib/staff/owner/supplier-server", () => ({
+  autoMarkSupplierOrderIfDue: vi.fn().mockResolvedValue(false),
+}));

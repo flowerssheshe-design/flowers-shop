@@ -28,6 +28,13 @@ function readBool(value: unknown, fallback: boolean): boolean {
   return fallback;
 }
 
+function readNumber(value: unknown, fallback: number): number {
+  const v = readValue<unknown>(value, fallback);
+  if (typeof v === "string" && v.trim() === "") return fallback;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
 function applySettings(data: unknown): SystemSettings {
   const s = (data && typeof data === "object" && "settings" in (data as any)
     ? (data as any).settings
@@ -68,8 +75,18 @@ function applySettings(data: unknown): SystemSettings {
       DEFAULTS.announcement_banner_text,
     ),
     is_stall_open: readBool(s?.is_stall_open, DEFAULTS.is_stall_open),
+    supplier_order_day: readNumber(s?.supplier_order_day, DEFAULTS.supplier_order_day),
+    supplier_order_time: readValue(s?.supplier_order_time, DEFAULTS.supplier_order_time),
+    week_close_day: readNumber(s?.week_close_day, DEFAULTS.week_close_day),
+    week_close_time: readValue(s?.week_close_time, DEFAULTS.week_close_time),
+    stall_bit_number: readValue(s?.stall_bit_number, DEFAULTS.stall_bit_number),
+    stall_bit_qr_url: readValue(s?.stall_bit_qr_url, DEFAULTS.stall_bit_qr_url),
+    stall_hours: readValue(s?.stall_hours, DEFAULTS.stall_hours),
   };
 }
+
+/** Exported for SystemSettingsContext, which should map rows the same way. */
+export { applySettings as mapSystemSettings };
 
 /**
  * Read system settings.

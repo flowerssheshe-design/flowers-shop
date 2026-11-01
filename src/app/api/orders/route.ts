@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -6,8 +6,28 @@ import { SUPABASE_CONFIGURED } from "@/lib/constants";
 import { getUserOrderStats } from "@/lib/auth";
 import { getServerSettings } from "@/lib/settings-server";
 import { priceCart, type PricingProduct } from "@/lib/pricing";
+import { cookies } from "next/headers";
+import { sendOrderThanks } from "@/lib/staff/marketing/order-thanks";
 import { getStoreMode, isRealtimeMode } from "@/lib/storeMode";
+import { autoMarkSupplierOrderIfDue } from "@/lib/staff/owner/supplier-server";
+import { orderTypeForMode } from "@/lib/staff/owner/store-mode";
+import { TRACKING_COOKIE, resolveTrackingLinkId } from "@/lib/staff/owner/tracking";
 import type { Order } from "@/types";
+
+function readCookie(name: string): string | undefined {
+  try {
+    return cookies().get(name)?.value;
+  } catch {
+    return undefined;
+  }
+}
+
+/** True when an insert failed only because a staff-system column is missing (migration 031 not run yet). */
+function isMissingStaffColumn(error: unknown): boolean {
+  const e = error as { message?: string; details?: string } | null;
+  const text = `${e?.message ?? ""} ${e?.details ?? ""}`;
+  return /order_type|tracking_link_id/.test(text);
+}
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -138,6 +158,21 @@ export async function POST(req: Request) {
   }
   const qualifies = discountPercent > 0;
 
+  // The week phase (or the owner's override) decides the order type:
+  // pre-orders feed the supplier order, live orders come out of stock.
+  // Live stock exists only once the supplier order is marked; do it if due.
+  await autoMarkSupplierOrderIfDue(createAdminClient());
+  const storeMode = await getStoreMode();
+  const isRealtime = isRealtimeMode(storeMode);
+  const orderType = orderTypeForMode(storeMode);
+
+  // Marketing attribution: only an existing, active tracking link is stored.
+  let trackingLinkId: string | null = null;
+  const refCookie = readCookie(TRACKING_COOKIE);
+  if (refCookie) {
+    trackingLinkId = await resolveTrackingLinkId(createAdminClient(), refCookie);
+  }
+
   // Step 1: Create the order first (without deducting stock).
   // Stock is only deducted for orders that are already confirmed (approved),
   // i.e. cash pickup orders. For pending_payment (bit/paybox), stock is
@@ -145,27 +180,32 @@ export async function POST(req: Request) {
   let orderData: Order;
   try {
     const admin = createAdminClient();
-    const { data, error } = await admin
+    const baseRow = {
+      user_id: user?.id ?? null,
+      customer_name: body.customer_name,
+      customer_phone: body.customer_phone,
+      delivery_address: body.delivery_address ?? null,
+      items: priced.items,
+      total_amount: priced.total,
+      delivery_type: body.delivery_type,
+      delivery_fee: priced.deliveryFee,
+      is_member: qualifies,
+      notes: body.notes ?? null,
+      status,
+      fulfillment_type: body.fulfillment_type ?? body.delivery_type,
+      payment_method: body.payment_method ?? null,
+      greeting_note: body.greeting_note ?? null,
+      inventory_deducted: false,
+    };
+    let { data, error } = await admin
       .from("orders")
-      .insert({
-        user_id: user?.id ?? null,
-        customer_name: body.customer_name,
-        customer_phone: body.customer_phone,
-        delivery_address: body.delivery_address ?? null,
-        items: priced.items,
-        total_amount: priced.total,
-        delivery_type: body.delivery_type,
-        delivery_fee: priced.deliveryFee,
-        is_member: qualifies,
-        notes: body.notes ?? null,
-        status,
-        fulfillment_type: body.fulfillment_type ?? body.delivery_type,
-        payment_method: body.payment_method ?? null,
-        greeting_note: body.greeting_note ?? null,
-        inventory_deducted: false,
-      })
+      .insert({ ...baseRow, order_type: orderType, tracking_link_id: trackingLinkId })
       .select("*")
       .single();
+    if (error && isMissingStaffColumn(error)) {
+      // DB not migrated yet: still take the order.
+      ({ data, error } = await admin.from("orders").insert(baseRow).select("*").single());
+    }
 
     if (error || !data) {
       console.error("Order insert error:", error);
@@ -187,8 +227,6 @@ export async function POST(req: Request) {
   // This reserves the stock immediately (prevents overselling) and ensures
   // the stall staff see reduced stock right away.
   // In pre-order mode, stock is not tracked — no deduction.
-  const storeMode = await getStoreMode();
-  const isRealtime = isRealtimeMode(storeMode);
   const shouldDeductAtCreation =
     isRealtime && priced.items.length > 0;
 
@@ -241,6 +279,9 @@ export async function POST(req: Request) {
       // non-fatal
     }
   }
+
+  // Fire-and-forget; the automations cron catches anything this misses.
+  void sendOrderThanks(orderData.id);
 
   return NextResponse.json({ order: orderData }, { status: 201 });
 }

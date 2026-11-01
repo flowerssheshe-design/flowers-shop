@@ -13,10 +13,12 @@ import { verifyTokenEdge } from "@/lib/signed-token-edge";
 
 const SECRET = "a".repeat(48);
 
+// Change the FIRST signature character: the last base64url character of a
+// 32-byte HMAC carries padding bits, so A↔B there can decode to the same bytes.
 function tamperSignature(token: string): string {
   const [body, sig] = token.split(".");
-  const last = sig.at(-1) === "A" ? "B" : "A";
-  return `${body}.${sig.slice(0, -1)}${last}`;
+  const first = sig[0] === "A" ? "B" : "A";
+  return `${body}.${first}${sig.slice(1)}`;
 }
 
 describe("signed-token", () => {

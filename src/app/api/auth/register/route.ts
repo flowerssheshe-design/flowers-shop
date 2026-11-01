@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { applyCookies, createClientForRoute } from "@/lib/supabase/server";
 import { SUPABASE_CONFIGURED } from "@/lib/constants";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { REF_COOKIE } from "@/lib/staff/marketing/tracking";
+import { readCookie, resolveActiveLinkId } from "@/lib/staff/marketing/ref-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -55,6 +58,21 @@ export async function POST(req: Request) {
       ),
       cookiesToSet,
     );
+  }
+
+  // Marketing attribution: which tracking link (/go/<slug>) brought this customer.
+  try {
+    const admin = createAdminClient();
+    const linkId = await resolveActiveLinkId(admin, readCookie(req, REF_COOKIE));
+    if (linkId) {
+      const { error: refError } = await admin
+        .from("profiles")
+        .update({ signup_link_id: linkId })
+        .eq("id", data.user.id);
+      if (refError) console.error("signup_link_id update error:", refError.message);
+    }
+  } catch (e) {
+    console.error("signup attribution error:", e);
   }
 
   // signUp returns a user even when the session is null (email confirmation

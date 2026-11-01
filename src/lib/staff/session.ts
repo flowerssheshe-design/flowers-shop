@@ -13,6 +13,8 @@ export type StaffEmployee = {
   id: string;
   full_name: string;
   role: StaffRole;
+  /** Every responsibility (owner / ops_manager / marketing). */
+  roles: string[];
   work_types: string[];
 };
 
@@ -39,10 +41,10 @@ export async function getStaffSession(): Promise<StaffSession | null> {
     const admin = createAdminClient();
     const { data, error } = await admin
       .from("employees")
-      .select("id, full_name, role, work_types, is_active")
+      .select("*")
       .eq("id", token.eid)
       .maybeSingle();
-    if (error || !data || data.is_active !== true) return null;
+    if (error || !data || data.is_active !== true || data.deleted_at) return null;
     if (!STAFF_ROLES.includes(data.role as StaffRole)) return null;
     return {
       token,
@@ -50,6 +52,7 @@ export async function getStaffSession(): Promise<StaffSession | null> {
         id: String(data.id),
         full_name: String(data.full_name ?? ""),
         role: data.role as StaffRole,
+        roles: Array.isArray(data.roles) ? data.roles.map(String) : data.role === "worker" ? [] : [String(data.role)],
         work_types: Array.isArray(data.work_types) ? data.work_types.map(String) : [],
       },
     };

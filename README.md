@@ -1,4 +1,4 @@
-# פרחים ואב — Supabase Flower Shop
+# לתת מהלב - פרחים בכל שישי — Supabase Flower Shop
 
 Next.js 14 (App Router) · TypeScript · Tailwind · Supabase · Shadcn-style UI.
 
@@ -52,12 +52,14 @@ Open <http://localhost:3000>.
 - Email is read from `auth.users`, not from `profiles`; the profile only
   stores custom fields (name/phone/address).
 
-## Admin
+## Staff area
 
-- URL: `/admin` (PIN gate)
-- After PIN: `/admin/products`
-- Supplier weekly aggregate: `/admin/products` (top card)
-- Mutations go through `/api/admin/products/*`
+- URL: `/staff` (login with phone + personal PIN). The old `/admin`, `/stall`
+  and `/courier` addresses redirect there.
+- Create the first accounts with `node scripts/create-staff.mjs --name "…" --phone 05… --role owner`.
+- Roles, screens and decisions: `docs/staff-system-plan.md`.
+- Env: `STAFF_SESSION_SECRET` (required), `CRON_SECRET`, `NEXT_PUBLIC_SITE_URL`,
+  VAPID keys for push (see `.env.example`).
 
 ## Reminders (pg_cron)
 

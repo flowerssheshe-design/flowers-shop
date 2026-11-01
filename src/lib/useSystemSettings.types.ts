@@ -16,6 +16,17 @@
   same_day_deadline?: string;
   announcement_banner_text?: string;
   is_stall_open?: boolean;
+  /** 0=Sunday … 6=Saturday. The weekly order to the supplier. */
+  supplier_order_day?: number;
+  supplier_order_time?: string;
+  /** When the business week closes and the next one opens. */
+  week_close_day?: number;
+  week_close_time?: string;
+  stall_bit_number?: string;
+  stall_bit_qr_url?: string;
+  stall_hours?: string;
+  /** "YYYY-MM-DD": the money, expenses and pay pages count only from this date. "" = from the start. */
+  money_start_date?: string;
 };
 
 export const DEFAULTS: Required<SystemSettings> = {
@@ -36,4 +47,12 @@ export const DEFAULTS: Required<SystemSettings> = {
   same_day_deadline: "13:00",
   announcement_banner_text: "",
   is_stall_open: false,
+  supplier_order_day: 2,
+  supplier_order_time: "12:00",
+  week_close_day: 6,
+  week_close_time: "21:00",
+  stall_bit_number: "",
+  stall_bit_qr_url: "",
+  stall_hours: "שישי 08:00-14:00",
+  money_start_date: "",
 };

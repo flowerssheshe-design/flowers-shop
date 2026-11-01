@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SUPABASE_CONFIGURED } from "@/lib/constants";
 import { requireAdmin } from "@/lib/admin-auth";
+import { getStoreMode } from "@/lib/storeMode";
+import { autoMarkSupplierOrderIfDue } from "@/lib/staff/owner/supplier-server";
 import { z } from "zod";
 
 export const runtime = "nodejs";
@@ -23,17 +25,20 @@ export async function GET() {
   }
   try {
     const admin = createAdminClient();
-    const [modeRes, stallRes] = await Promise.all([
-      admin.from("store_settings").select("value").eq("key", "mode").single(),
+    // At the supplier-order time, mark the order as sent if nobody did, so the
+    // website has live stock the moment it switches to live sale.
+    await autoMarkSupplierOrderIfDue(admin);
+    // Mode follows the business week ('auto') unless manually overridden.
+    const [mode, stallRes, openStallsRes] = await Promise.all([
+      getStoreMode(),
       admin.from("system_settings").select("value").eq("key", "is_stall_open").single(),
+      admin.from("stalls").select("id", { count: "exact", head: true }).eq("is_open", true).eq("is_active", true),
     ]);
 
-    let mode = "preorder";
-    if (!modeRes.error && modeRes.data) {
-      const modeValue = modeRes.data.value as string;
-      mode = modeValue === "realtime" ? "realtime" : "preorder";
-    } else if (modeRes.error) {
-      console.error("Store mode GET error:", modeRes.error);
+    // The stall sellers open and close their stalls from the staff stall
+    // screen; the old global flag is only a fallback before migration 031.
+    if (!openStallsRes.error) {
+      return NextResponse.json({ mode, stall_open: (openStallsRes.count ?? 0) > 0 });
     }
 
     let stall_open = false;

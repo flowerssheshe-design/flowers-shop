@@ -17,6 +17,7 @@ import {
   Mail,
   Clock,
   MapPin,
+  Gift,
   MessageSquare,
   Zap,
   X,
@@ -230,6 +231,7 @@ export function Storefront({
       setCheckoutOpen(false);
       setCartOpen(false);
       setNotes("");
+      setGreetingNote("");
       try {
         const url = new window.URL(window.location.href);
         url.searchParams.delete("reset");
@@ -622,6 +624,8 @@ export function Storefront({
           setAddress={setAddress}
           notes={notes}
           setNotes={setNotes}
+          greetingNote={greetingNote}
+          setGreetingNote={setGreetingNote}
           canSubmit={canSubmit}
           submitOrder={submitOrder}
           submitting={submitting}
@@ -810,6 +814,8 @@ type CheckoutDialogProps = {
   setAddress: (v: string) => void;
   notes: string;
   setNotes: (v: string) => void;
+  greetingNote: string;
+  setGreetingNote: (v: string) => void;
   canSubmit: boolean;
   submitOrder: () => void;
   submitting: boolean;
@@ -836,6 +842,8 @@ function CheckoutDialog(props: CheckoutDialogProps) {
     setAddress,
     notes,
     setNotes,
+    greetingNote,
+    setGreetingNote,
     canSubmit,
     submitOrder,
     submitting,
@@ -950,8 +958,23 @@ function CheckoutDialog(props: CheckoutDialogProps) {
               id="co-notes"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="העדפות צבעים, מכתב ברכה וכו..."
+              placeholder="העדפות צבעים, הוראות למשלוח וכו׳"
               rows={2}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="co-greeting">
+              <Gift className="me-1 inline h-3.5 w-3.5" />
+              ברכה לכרטיס (לא חובה)
+            </Label>
+            <Textarea
+              id="co-greeting"
+              value={greetingNote}
+              onChange={(e) => setGreetingNote(e.target.value)}
+              placeholder="מה לכתוב בכרטיס שמצורף לזר"
+              maxLength={1000}
+              rows={3}
             />
   ﻿        </div>
         </div>
