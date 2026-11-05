@@ -36,11 +36,15 @@ export type PickupOrder = {
   payment_method: string | null;
   notes: string | null;
   greeting_note: string | null;
+  /** "approved" = waiting, "completed" = handed over. */
+  status?: string;
 };
 
 export type StallData = {
   today: string;
   canChooseStall: boolean;
+  /** Friday: sales are open. */
+  canSell?: boolean;
   stalls: { id: string; name: string; location: string | null }[];
   bit: { number: string; qr_url: string };
   stall: { id: string; name: string; location: string | null; is_open: boolean } | null;

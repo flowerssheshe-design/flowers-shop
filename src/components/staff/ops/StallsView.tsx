@@ -13,10 +13,10 @@ import { cn } from "@/lib/utils";
 import { OPS } from "@/lib/staff/ops/labels";
 import { opsFetch } from "@/lib/staff/ops/client";
 import type { EquipmentItem, Stall, StallWithToday } from "@/lib/staff/ops/types";
-import { ConfirmDialog, EmptyBlock, ErrorBlock, Field, FormError, FormSheet, LoadingBlock, useOpsData } from "./common";
+import { Collapsible, ConfirmDialog, EmptyBlock, ErrorBlock, Field, FormError, FormSheet, LoadingBlock, useOpsData } from "./common";
 import { CourierCard, FridayBar, StallFridayStaff, SupplyCard, useFriday } from "./FridayPanel";
 import { BudgetPanel } from "./BudgetPanel";
-import { StallStockDialog } from "./StallStockDialog";
+import { StallSplitPanel } from "./StallSplitPanel";
 
 type StallsResponse = { today: string; stalls: StallWithToday[]; equipment: EquipmentItem[] };
 
@@ -25,7 +25,23 @@ export function StallsView({ me }: { me: ShellEmployee }) {
   const [editing, setEditing] = React.useState<StallWithToday | "new" | null>(null);
   const { toast } = useToast();
   const friday = useFriday();
-  const [stocking, setStocking] = React.useState<StallWithToday | null>(null);
+  const [pickupBusy, setPickupBusy] = React.useState<string | null>(null);
+
+  async function toggleFlag(s: StallWithToday, field: "is_pickup_point" | "is_delivery_point", on: boolean) {
+    setPickupBusy(s.id);
+    try {
+      await opsFetch(`/api/staff/stalls/${s.id}`, { method: "PATCH", body: { [field]: on } });
+      setData((d) => (d ? { ...d, stalls: d.stalls.map((x) => (x.id === s.id ? { ...x, [field]: on } : x)) } : d));
+      setSplitKey((k) => k + 1);
+      const what = field === "is_pickup_point" ? "נקודת איסוף" : "נקודת משלוחים";
+      toast({ title: on ? `${s.name}: ${what}` : `${s.name}: כבר לא ${what}`, variant: "success" });
+    } catch (e) {
+      toast({ title: e instanceof Error ? e.message : T.saveError, variant: "error" });
+    } finally {
+      setPickupBusy(null);
+    }
+  }
+  const [splitKey, setSplitKey] = React.useState(0);
 
   return (
     <div className="space-y-8">
@@ -87,6 +103,38 @@ export function StallsView({ me }: { me: ShellEmployee }) {
                     <span className="text-xs text-muted-foreground">המוכר פותח וסוגר מהמסך שלו</span>
                   </div>
 
+                  {/* Website orders: pickup from this stall, and/or the courier takes deliveries from here. */}
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                    {(
+                      [
+                        ["is_pickup_point", "נקודת איסוף", "לקוחות בוחרים לאסוף מכאן"],
+                        ["is_delivery_point", "נקודת משלוחים", "השליח לוקח מכאן את זרי המשלוחים"],
+                      ] as const
+                    ).map(([field, label, hint]) => {
+                      const on = s[field] === true;
+                      return (
+                        <label
+                          key={field}
+                          className={cn(
+                            "flex min-h-12 cursor-pointer items-center justify-between gap-2 rounded-md border px-3 py-2",
+                            on && s.is_active && "border-primary/40 bg-primary/5",
+                          )}
+                        >
+                          <span>
+                            <span className="font-medium">{label}</span>
+                            <span className="block text-xs text-muted-foreground">{s.is_active ? hint : "דוכן לא פעיל"}</span>
+                          </span>
+                          <Switch
+                            checked={on}
+                            disabled={pickupBusy === s.id || !s.is_active}
+                            onCheckedChange={(v) => toggleFlag(s, field, v)}
+                            aria-label={`${s.name} ${label}`}
+                          />
+                        </label>
+                      );
+                    })}
+                  </div>
+
                   <div className="mt-4 grid gap-4 sm:grid-cols-2">
                     {s.is_active ? (
                       <StallFridayStaff f={friday} stallId={s.id} stallName={s.name} meId={me.id} />
@@ -99,12 +147,6 @@ export function StallsView({ me }: { me: ShellEmployee }) {
                           <Package className="h-4 w-4" aria-hidden="true" />
                           {OPS.todayStock}
                         </p>
-                        {s.is_active && (
-                          <Button variant="outline" size="sm" className="h-9" onClick={() => setStocking(s)}>
-                            <Package className="h-4 w-4" aria-hidden="true" />
-                            חלוקת זרים
-                          </Button>
-                        )}
                       </div>
                       {s.stock.length === 0 ? (
                         <p className="text-sm text-muted-foreground">{OPS.noStockToday}</p>
@@ -125,6 +167,8 @@ export function StallsView({ me }: { me: ShellEmployee }) {
             </ul>
           )}
 
+          <StallSplitPanel key={splitKey} onChanged={reload} />
+
           <div className="grid gap-4 lg:grid-cols-2">
             <CourierCard f={friday} meId={me.id} />
             <SupplyCard f={friday} meId={me.id} />
@@ -139,14 +183,6 @@ export function StallsView({ me }: { me: ShellEmployee }) {
         </>
       )}
 
-      {stocking && (
-        <StallStockDialog
-          stallId={stocking.id}
-          stallName={stocking.name}
-          onClose={() => setStocking(null)}
-          onSaved={reload}
-        />
-      )}
 
       {editing && (
         <StallForm
@@ -349,8 +385,7 @@ function EquipmentEditor({ items, onChange }: { items: EquipmentItem[]; onChange
     });
 
   return (
-    <section className="rounded-lg border bg-background p-4">
-      <h2 className="text-lg font-semibold">{OPS.equipment}</h2>
+    <Collapsible id="stall-equipment" title={OPS.equipment} summary={`${items.length} פריטים ברשימה`}>
       <p className="mb-3 text-sm text-muted-foreground">{OPS.equipmentHint}</p>
 
       {items.length === 0 ? (
@@ -438,6 +473,6 @@ function EquipmentEditor({ items, onChange }: { items: EquipmentItem[]; onChange
           {OPS.addItem}
         </Button>
       </form>
-    </section>
+    </Collapsible>
   );
 }

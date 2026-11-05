@@ -81,6 +81,12 @@ export function Storefront({
   const [upsellOpen, setUpsellOpen] = useState(false);
   const [submittedOrder, setSubmittedOrder] = useState<Order | null>(null);
   const [stockById, setStockById] = useState<Record<string, number>>({});
+  const [pickupPoints, setPickupPoints] = useState<PickupPoint[]>([]);
+  const [deliveryStock, setDeliveryStock] = useState<Record<string, number> | null>(null);
+  const [pickupStallId, setPickupStallId] = useState<string>("");
+  // Friday: every pickup stall is closed / every stall is closed (nowhere to bring orders from).
+  const [stallsPickupClosed, setStallsPickupClosed] = useState(false);
+  const [orderingClosed, setOrderingClosed] = useState(false);
   const [stockLoading, setStockLoading] = useState(true);
   const [liveProducts, setLiveProducts] = useState<Product[]>(products);
 
@@ -131,8 +137,13 @@ export function Storefront({
           const data = await res.json();
           const stockMap: Record<string, number> = {};
            const availability: Record<string, boolean> = {};
+           setPickupPoints(Array.isArray(data.pickup_points) ? data.pickup_points : []);
+           setDeliveryStock(data.delivery_stock ?? null);
+           setStallsPickupClosed(data.pickup_closed === true);
+           setOrderingClosed(data.ordering_closed === true);
            (data.inventory ?? []).forEach((item: any) => {
-             const stock = item.live_stock_count ?? 0;
+             // "orderable" = what can still be ordered at some pickup point or for delivery.
+             const stock = item.orderable ?? item.live_stock_count ?? 0;
              stockMap[item.product_id] = stock;
              availability[item.product_id] = stock > 0;
            });
@@ -177,23 +188,9 @@ export function Storefront({
             schema: "public",
             table: "inventory",
           },
-          (payload) => {
-            const newRecord = payload.new as { product_id: string; live_stock_count: number } | null;
-            const oldRecord = payload.old as { product_id: string; live_stock_count: number } | null;
-            const productId = newRecord?.product_id ?? oldRecord?.product_id;
-            const stock = newRecord?.live_stock_count ?? 0;
-             if (productId) {
-              setStockById((prev) => ({ ...prev, [productId]: stock }));
-              // Update product availability in real-time so the product list
-              // reflects stock changes from order creation/deletion/cancellation.
-              setLiveProducts((prev) =>
-                prev.map((p) =>
-                  p.id === productId
-                    ? { ...p, is_available: stock > 0 }
-                    : p,
-                ),
-              );
-            }
+          // The per-stall numbers are worked out on the server: just reload them.
+          () => {
+            fetchStock();
           }
         )
         .subscribe();
@@ -297,7 +294,37 @@ export function Storefront({
   };
   const removeFromCart = (id: string) => onQtyChange(id, 0);
 
+  // Which pickup points can take the whole cart (in live sale; pre-orders have no limit).
+  const stallShort = useMemo(() => {
+    const out: Record<string, string | null> = {};
+    for (const p of pickupPoints) {
+      const short = mode === "realtime" ? cartItems.find((it) => (p.stock[it.productId] ?? 0) < it.qty) : undefined;
+      out[p.id] = short ? short.title : null;
+    }
+    return out;
+  }, [pickupPoints, cartItems, mode]);
+
+  // Drop a chosen stall that is gone or can no longer take the cart.
+  useEffect(() => {
+    if (pickupStallId && (!pickupPoints.some((p) => p.id === pickupStallId) || stallShort[pickupStallId])) {
+      setPickupStallId("");
+    }
+  }, [pickupPoints, pickupStallId, stallShort]);
+
+  // The owner can turn off same-day pickup / delivery on Friday itself.
+  const isFriday = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Jerusalem", weekday: "short" }).format(new Date()) === "Fri";
+  const pickupClosed = orderingClosed || stallsPickupClosed || (isFriday && settings.friday_pickup === false);
+  const deliveryClosed = orderingClosed || (isFriday && settings.friday_delivery === false);
+  useEffect(() => {
+    if (deliveryType === "pickup" && pickupClosed && !deliveryClosed) setDeliveryType("delivery");
+    if (deliveryType === "delivery" && deliveryClosed && !pickupClosed) setDeliveryType("pickup");
+  }, [deliveryType, pickupClosed, deliveryClosed]);
+
+  const needsStall = deliveryType === "pickup" && pickupPoints.length > 0;
+
   const canSubmit =
+    !(deliveryType === "pickup" ? pickupClosed : deliveryClosed) &&
+    (!needsStall || pickupStallId !== "") &&
     name.trim().length >= 2 &&
     phone.trim().length >= 9 &&
     cartItems.length > 0 &&
@@ -311,9 +338,15 @@ export function Storefront({
     try {
       // Validate stock availability before submitting in realtime mode
       if (mode === "realtime" && !stockLoading) {
-        const insufficientItems = cartItems.filter(
-          (item) => (stockById[item.productId] ?? 0) < item.qty,
-        );
+        const insufficientItems = cartItems.filter((item) => {
+          const have =
+            deliveryType === "delivery"
+              ? deliveryStock?.[item.productId] ?? stockById[item.productId] ?? 0
+              : needsStall
+                ? pickupPoints.find((p) => p.id === pickupStallId)?.stock[item.productId] ?? 0
+                : stockById[item.productId] ?? 0;
+          return have < item.qty;
+        });
         if (insufficientItems.length > 0) {
           throw new Error(
             `המוצר "${insufficientItems[0].title}" אזל מהמלאי`,
@@ -337,6 +370,7 @@ export function Storefront({
           fulfillment_type: deliveryType,
           payment_method: paymentMethod || undefined,
           greeting_note: greetingNote.trim() || null,
+          pickup_stall_id: needsStall ? pickupStallId : null,
         }),
       });
       if (!res.ok) {
@@ -522,10 +556,22 @@ export function Storefront({
             <div className="rounded-xl border border-primary/10 bg-card p-4">
               <h2 className="mb-3 font-semibold text-primary">איסוף עצמי</h2>
               <ul className="space-y-2 text-sm">
-                <li className="flex items-start gap-2">
-                  <MapPin className="mt-0.5 h-4 w-4 text-primary/70" />
-                  <span>{settings.pickup_address}</span>
-                </li>
+                {pickupPoints.length > 0 ? (
+                  pickupPoints.map((p) => (
+                    <li key={p.id} className="flex items-start gap-2">
+                      <MapPin className="mt-0.5 h-4 w-4 text-primary/70" />
+                      <span>
+                        {p.name}
+                        {p.location ? ` – ${p.location}` : ""}
+                      </span>
+                    </li>
+                  ))
+                ) : (
+                  <li className="flex items-start gap-2">
+                    <MapPin className="mt-0.5 h-4 w-4 text-primary/70" />
+                    <span>{settings.pickup_address}</span>
+                  </li>
+                )}
                 <li className="flex items-start gap-2">
                   <StoreIcon className="mt-0.5 h-4 w-4 text-primary/70" />
                   <span>
@@ -534,8 +580,9 @@ export function Storefront({
                 </li>
               </ul>
               <p className="mt-3 text-xs text-muted-foreground">
-                בחרו באיסוף עצמי בהזמנה, ואנו נכין את ההזמנה לאיסוף בכתובת
-                הנ״ל.
+                {pickupPoints.length > 1
+                  ? "בחרו באיסוף עצמי בהזמנה ובחרו מאיזה דוכן לאסוף."
+                  : "בחרו באיסוף עצמי בהזמנה, ואנו נכין את ההזמנה לאיסוף בכתובת הנ״ל."}
               </p>
             </div>
           </div>
@@ -638,6 +685,13 @@ export function Storefront({
           }}
           paymentMethod={paymentMethod}
           setPaymentMethod={setPaymentMethod}
+          pickupPoints={pickupPoints}
+          pickupStallId={pickupStallId}
+          setPickupStallId={setPickupStallId}
+          stallShort={stallShort}
+          pickupClosed={pickupClosed}
+          deliveryClosed={deliveryClosed}
+          orderingClosed={orderingClosed}
          />
        </Dialog>
       {/* Stall Status Badge - Top-Right (floating) */}
@@ -652,7 +706,11 @@ export function Storefront({
           >
             <span className="text-lg" aria-hidden="true">{isStallOpen ? "🏪" : "🔒"}</span>
             <span>
-              {isStallOpen ? "הדוכן נפתח! בואו לבקר" : "דוכן סגור — הזמנות מראש בלבד"}
+              {isStallOpen
+                ? "הדוכן פתוח! בואו לבקר"
+                : orderingClosed
+                  ? "כל הדוכנים סגורים כרגע — אי אפשר להזמין עכשיו"
+                  : "הדוכנים סגורים כרגע — אפשר להזמין לאיסוף או למשלוח ביום שישי"}
             </span>
             <button
               onClick={dismissStallToast}
@@ -825,7 +883,19 @@ type CheckoutDialogProps = {
   onBackToCart: () => void;
   paymentMethod: string;
   setPaymentMethod: (v: "bit" | "paybox" | "cash" | "") => void;
+  pickupPoints: PickupPoint[];
+  pickupStallId: string;
+  setPickupStallId: (id: string) => void;
+  /** Per pickup point: the bouquet it is short of for this cart, or null. */
+  stallShort: Record<string, string | null>;
+  /** Friday, and the owner turned this option off for today. */
+  pickupClosed: boolean;
+  deliveryClosed: boolean;
+  /** Every stall is closed on Friday: no orders at all. */
+  orderingClosed: boolean;
 };
+
+type PickupPoint = { id: string; name: string; location: string | null; stock: Record<string, number> };
 
 function CheckoutDialog(props: CheckoutDialogProps) {
   const settings = useSystemSettings();
@@ -853,6 +923,13 @@ function CheckoutDialog(props: CheckoutDialogProps) {
     onBackToCart,
     paymentMethod,
     setPaymentMethod,
+    pickupPoints,
+    pickupStallId,
+    setPickupStallId,
+    stallShort,
+    pickupClosed,
+    deliveryClosed,
+    orderingClosed,
   } = props;
 
   const deliveryFee =
@@ -873,11 +950,12 @@ function CheckoutDialog(props: CheckoutDialogProps) {
             <button
               type="button"
               onClick={() => setDeliveryType("pickup")}
+              disabled={pickupClosed}
               className={`flex items-center justify-center gap-2 rounded-xl border p-3 text-sm font-medium transition ${
                 deliveryType === "pickup"
                   ? "border-primary bg-primary text-primary-foreground shadow-sm"
                   : "border-primary/15 bg-card hover:bg-accent"
-              }`}
+              } ${pickupClosed ? "cursor-not-allowed opacity-50" : ""}`}
             >
               <StoreIcon className="h-4 w-4" />
               איסוף עצמי
@@ -885,11 +963,12 @@ function CheckoutDialog(props: CheckoutDialogProps) {
             <button
               type="button"
               onClick={() => setDeliveryType("delivery")}
+              disabled={deliveryClosed}
               className={`flex items-center justify-center gap-2 rounded-xl border p-3 text-sm font-medium transition ${
                 deliveryType === "delivery"
                   ? "border-primary bg-primary text-primary-foreground shadow-sm"
                   : "border-primary/15 bg-card hover:bg-accent"
-              }`}
+              } ${deliveryClosed ? "cursor-not-allowed opacity-50" : ""}`}
             >
               <Truck className="h-4 w-4" />
               משלוח עד הבית
@@ -899,6 +978,54 @@ function CheckoutDialog(props: CheckoutDialogProps) {
             </button>
           </div>
         </div>
+
+        {(pickupClosed || deliveryClosed) && (
+          <p className="mt-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-900">
+            {orderingClosed
+              ? "כל הדוכנים סגורים כרגע, ולכן אי אפשר להזמין עכשיו."
+              : pickupClosed && deliveryClosed
+                ? "היום (שישי) אין הזמנות לאיסוף או למשלוח מהאתר."
+                : pickupClosed
+                  ? "כרגע אין איסוף עצמי מהאתר, רק משלוחים."
+                  : "היום (שישי) אין משלוחים, רק איסוף עצמי."}
+          </p>
+        )}
+
+        {/* Pickup point */}
+        {deliveryType === "pickup" && pickupPoints.length > 0 && (
+          <div className="mt-4 space-y-2">
+            <Label>מאיזה דוכן לאסוף?</Label>
+            <div className="space-y-2" role="radiogroup" aria-label="נקודת איסוף">
+              {pickupPoints.map((p) => {
+                const short = stallShort[p.id];
+                const selected = pickupStallId === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    disabled={Boolean(short)}
+                    onClick={() => setPickupStallId(p.id)}
+                    className={`flex w-full items-start gap-2 rounded-xl border p-3 text-start text-sm transition ${
+                      selected
+                        ? "border-primary bg-primary/10"
+                        : "border-primary/15 bg-card hover:bg-accent"
+                    } ${short ? "cursor-not-allowed opacity-50" : ""}`}
+                  >
+                    <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-primary/70" />
+                    <span className="min-w-0">
+                      <span className="block font-medium">{p.name}</span>
+                      {p.location && <span className="block text-xs text-muted-foreground">{p.location}</span>}
+                      {short && <span className="block text-xs text-destructive">&quot;{short}&quot; אזל בדוכן הזה</span>}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-xs text-muted-foreground">איסוף ביום שישי, {settings.pickup_hours}</p>
+          </div>
+        )}
 
         {/* Recipient details */}
         <div className="mt-4 space-y-3">
@@ -1102,7 +1229,7 @@ function CheckoutDialog(props: CheckoutDialogProps) {
         </Button>
         {!canSubmit && cartItems.length > 0 && (
           <p className="text-center text-xs text-muted-foreground">
-            יש למלא שם, טלפון, כתובת (למשלוח) ואמצעי תשלום.
+            {deliveryType === "pickup" && pickupPoints.length > 0 && !pickupStallId ? "יש לבחור דוכן לאיסוף, ולמלא שם, טלפון ואמצעי תשלום." : "יש למלא שם, טלפון, כתובת (למשלוח) ואמצעי תשלום."}
           </p>
         )}
       </div>

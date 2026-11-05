@@ -20,7 +20,7 @@ export async function POST(_req: Request, ctx: { params: { id: string } }) {
     const { admin, today } = await workContext();
     const { data: order, error } = await admin
       .from("orders")
-      .select("id, order_type, stall_id, status, items, created_at")
+      .select("id, order_type, stall_id, status, items, created_at, inventory_deducted")
       .eq("id", id)
       .maybeSingle();
     if (error) return jsonError("לא הצלחנו לטעון את המכירה", 500);
@@ -47,6 +47,10 @@ export async function POST(_req: Request, ctx: { params: { id: string } }) {
     for (const [productId, qty] of Array.from(qtyByProduct(items).entries())) {
       try {
         await stallAdjust(admin, stall.id, productId, qty);
+        // Newer sales also came off the general stock.
+        if (order.inventory_deducted === true) {
+          await admin.rpc("increment_inventory", { p_product_id: productId, p_qty: qty });
+        }
       } catch (e) {
         console.error("restoring stall stock failed:", { orderId: id, productId, qty, e });
       }

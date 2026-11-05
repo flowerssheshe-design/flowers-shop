@@ -2,6 +2,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SUPABASE_CONFIGURED } from "@/lib/constants";
 import { requireAdminOrStall } from "@/lib/admin-auth";
+import { loadStallSplit } from "@/lib/staff/ops/stall-split-server";
 import type { Inventory } from "@/types";
 
 export const runtime = "nodejs";
@@ -48,12 +49,47 @@ export async function GET() {
       }
     }
 
+    // Pickup points and what each still has. Without them (or before migration
+    // 043) the storefront works with the general stock and one pickup address.
+    let pickupPoints: { id: string; name: string; location: string | null; stock: Record<string, number> }[] = [];
+    let deliveryStock: Record<string, number> | null = null;
+    let orderable: Map<string, number> | null = null;
+    // Friday: closed stalls take no orders; with every stall closed nothing can be ordered.
+    let pickupClosed = false;
+    let orderingClosed = false;
+    try {
+      const split = await loadStallSplit(supabase);
+      orderingClosed = split.noOrders;
+      const configured = split.stalls.filter((s) => s.is_pickup_point);
+      pickupClosed = configured.length > 0 && configured.every((s) => split.closedForOrders.has(s.id));
+      pickupPoints = configured
+        .filter((s) => !split.closedForOrders.has(s.id))
+        .map((s) => ({
+          id: s.id,
+          name: s.name,
+          location: s.location,
+          stock: Object.fromEntries(Array.from(split.split.entries()).map(([pid, p]) => [pid, p.stallFree[s.id] ?? 0])),
+        }));
+      deliveryStock = Object.fromEntries(Array.from(split.split.entries()).map(([pid, p]) => [pid, p.deliveryFree]));
+      orderable = new Map(Array.from(split.split.entries()).map(([pid, p]) => [pid, p.orderable]));
+    } catch (e) {
+      console.error("inventory GET stall split:", e);
+    }
+
     const inventory = (data ?? []).map((row) => ({
       ...row,
       reserved_orders: counts.get(row.product_id) ?? 0,
+      // What can still be ordered somewhere (best pickup point, or delivery).
+      orderable: orderable?.get(row.product_id) ?? row.live_stock_count ?? 0,
     }));
 
-    return NextResponse.json({ inventory });
+    return NextResponse.json({
+      inventory,
+      pickup_points: pickupPoints,
+      delivery_stock: deliveryStock,
+      pickup_closed: pickupClosed,
+      ordering_closed: orderingClosed,
+    });
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: "שגיאת שרת" }, { status: 500 });

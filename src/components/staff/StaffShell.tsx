@@ -242,30 +242,33 @@ export function StaffShell({
   }
 
   const meActive = isActive(pathname, "/staff/me");
+  // "My area" is a regular menu item at the top, next to the other pages; the
+  // name and log-out sit under the title (nothing at the bottom, where the
+  // dev-mode badge would cover it).
+  const meLink = (
+    <Link
+      href="/staff/me"
+      onClick={() => setMenuOpen(false)}
+      aria-current={meActive ? "page" : undefined}
+      className={cn(
+        "flex min-h-11 items-center gap-2.5 rounded-md px-3 py-2 text-sm font-semibold transition lg:min-h-9",
+        meActive ? "bg-primary text-primary-foreground" : "hover:bg-accent",
+      )}
+    >
+      <UserRound className="h-4 w-4 shrink-0" aria-hidden="true" />
+      האזור האישי
+    </Link>
+  );
   const userBox = (
-    <div className="flex items-center justify-between gap-2 border-t pt-4">
-      {/* "My area" lives here, on the person's own name. */}
-      <Link
-        href="/staff/me"
-        onClick={() => setMenuOpen(false)}
-        aria-current={meActive ? "page" : undefined}
-        className={cn(
-          "flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 transition",
-          meActive ? "bg-primary text-primary-foreground" : "hover:bg-accent",
-        )}
-      >
-        <UserRound className="h-5 w-5 shrink-0" aria-hidden="true" />
-        <span className="min-w-0">
-          <span className="block truncate text-sm font-medium">{employee.full_name}</span>
-          <span className={cn("block truncate text-xs", meActive ? "text-primary-foreground/80" : "text-muted-foreground")}>
-            האזור שלי · {ROLE_LABELS[employee.role]}
-          </span>
-        </span>
-      </Link>
+    <div className="flex items-center justify-between gap-2 border-b px-3 pb-3">
+      <span className="min-w-0">
+        <span className="block truncate text-sm font-medium">{employee.full_name}</span>
+        <span className="block truncate text-xs text-muted-foreground">{ROLE_LABELS[employee.role]}</span>
+      </span>
       <button
         type="button"
         onClick={logout}
-        className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+        className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
       >
         <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
         {T.logout}
@@ -310,10 +313,11 @@ export function StaffShell({
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <div className="flex-1">
+            {userBox}
+            <div className="flex-1 space-y-1">
+              {meLink}
               <NavList sections={sections} pathname={pathname} onNavigate={() => setMenuOpen(false)} />
             </div>
-            {userBox}
           </aside>
         </div>
       )}
@@ -322,10 +326,11 @@ export function StaffShell({
         {/* Desktop sidebar */}
         <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col gap-4 overflow-y-auto border-l bg-background p-4 lg:flex">
           <p className="px-3 text-base font-semibold">לתת מהלב · צוות</p>
-          <div className="flex-1">
+          {userBox}
+          <div className="flex-1 space-y-1">
+            {meLink}
             <NavList sections={sections} pathname={pathname} />
           </div>
-          {userBox}
         </aside>
 
         <main className="min-w-0 flex-1 p-4 lg:p-8">{children}</main>

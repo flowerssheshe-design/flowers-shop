@@ -6,7 +6,7 @@ import { getStoreMode, isRealtimeMode } from "@/lib/storeMode";
 import { T } from "@/lib/staff/labels";
 import { OrderActionSchema } from "@/lib/staff/ops/schemas";
 import { ORDER_COLUMNS, canApplyAction, normalizeItems, normalizeOrder, planStockChange, targetStatus } from "@/lib/staff/ops/orders";
-import { deductStockForItems, restoreStockForItems } from "@/lib/staff/ops/order-stock";
+import { returnOrderStock, takeOrderStock } from "@/lib/staff/ops/stall-split-server";
 import { UUID_RE, jsonError, notConfigured, parseBody, serverError } from "@/lib/staff/ops/http";
 
 export const runtime = "nodejs";
@@ -34,7 +34,7 @@ export async function PATCH(req: Request, ctx: { params: { id: string } }) {
     const admin = createAdminClient();
     const { data: before, error: fetchErr } = await admin
       .from("orders")
-      .select("status, items, inventory_deducted, approved_by")
+      .select("*")
       .eq("id", id)
       .maybeSingle();
     if (fetchErr) return serverError(fetchErr, "order PATCH load");
@@ -57,12 +57,20 @@ export async function PATCH(req: Request, ctx: { params: { id: string } }) {
       update.approved_by = me.id;
     }
 
+    const pickupStallId = (before.pickup_stall_id as string | null | undefined) ?? null;
+    const stallDeducted = before.stall_stock_deducted === true;
+    let tookFromStall = false;
     if (plan.deduct) {
-      const result = await deductStockForItems(admin, items);
-      if (!result.success) return jsonError(`המוצר "${result.title}" אזל מהמלאי`, 409);
+      const result = await takeOrderStock(admin, items, pickupStallId);
+      if (!result.ok) return jsonError(`המוצר "${result.title}" אזל מהמלאי`, 409);
       update.inventory_deducted = true;
+      tookFromStall = result.stallDeducted;
+      if (tookFromStall) update.stall_stock_deducted = true;
     }
-    if (plan.restore) update.inventory_deducted = false;
+    if (plan.restore) {
+      update.inventory_deducted = false;
+      if (stallDeducted) update.stall_stock_deducted = false;
+    }
 
     // Only update if nobody changed the status meanwhile.
     const { data, error } = await admin
@@ -73,13 +81,13 @@ export async function PATCH(req: Request, ctx: { params: { id: string } }) {
       .select(ORDER_COLUMNS)
       .maybeSingle();
     if (error || !data) {
-      if (plan.deduct) await restoreStockForItems(admin, items);
+      if (plan.deduct) await returnOrderStock(admin, items, { pickupStallId, stallDeducted: tookFromStall });
       if (error) return serverError(error, "order PATCH update");
       return jsonError("ההזמנה השתנתה בינתיים. רעננו ונסו שוב.", 409);
     }
 
     // The status change won, so this request is the one that gives the stock back.
-    if (plan.restore) await restoreStockForItems(admin, items);
+    if (plan.restore) await returnOrderStock(admin, items, { pickupStallId, stallDeducted });
 
     const names = new Map<string, string>();
     const approver = (data as Record<string, unknown>).approved_by;
@@ -111,7 +119,7 @@ export async function DELETE(_req: Request, ctx: { params: { id: string } }) {
     const admin = createAdminClient();
     const { data: order, error: fetchErr } = await admin
       .from("orders")
-      .select("id, items, inventory_deducted, order_type")
+      .select("*")
       .eq("id", id)
       .maybeSingle();
     if (fetchErr) return serverError(fetchErr, "order DELETE load");
@@ -122,7 +130,12 @@ export async function DELETE(_req: Request, ctx: { params: { id: string } }) {
 
     const { error } = await admin.from("orders").delete().eq("id", id);
     if (error) return serverError(error, "order DELETE");
-    if (order.inventory_deducted) await restoreStockForItems(admin, normalizeItems(order.items));
+    if (order.inventory_deducted) {
+      await returnOrderStock(admin, normalizeItems(order.items), {
+        pickupStallId: (order.pickup_stall_id as string | null | undefined) ?? null,
+        stallDeducted: order.stall_stock_deducted === true,
+      });
+    }
     return NextResponse.json({ ok: true });
   } catch (e) {
     return serverError(e, "order DELETE");

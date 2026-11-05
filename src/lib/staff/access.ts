@@ -126,7 +126,7 @@ export const SECTIONS: Section[] = [
   { key: "supplier", href: "/staff/supplier", label: "הזמנה מהספק", group: "orders", icon: "Truck", allow: isOwner },
 
   // Opened from the name at the bottom of the menu, not listed in it.
-  { key: "me", href: "/staff/me", label: "האזור שלי", group: "team", icon: "UserRound", allow: () => true, inMenu: () => false },
+  { key: "me", href: "/staff/me", label: "האזור האישי", group: "team", icon: "UserRound", allow: () => true, inMenu: () => false },
   // The shift manager staffs Friday from "ניהול דוכנים"; the full weekly grid is for owners.
   { key: "schedule", href: "/staff/schedule", label: "לוח משמרות שבועי", group: "team", icon: "CalendarDays", allow: isOwnerOrOps, inMenu: isOwner },
   { key: "team", href: "/staff/team", label: "עובדים", group: "team", icon: "UserCog", allow: isOwnerOrOps },

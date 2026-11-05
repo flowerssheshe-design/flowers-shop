@@ -11,7 +11,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const STALL_COLUMNS = "id, name, location, is_active, is_open, sort_order";
+// "*" so the page keeps working if a newer column's migration wasn't run yet.
+const STALL_COLUMNS = "*";
 
 /** All stalls with today's stock and who is scheduled there today, plus the equipment list. */
 export async function GET() {
