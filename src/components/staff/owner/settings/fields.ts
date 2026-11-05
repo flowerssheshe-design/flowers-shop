@@ -57,6 +57,8 @@ export const GROUPS: Group[] = [
       { key: "pickup_hours", label: "שעות איסוף", kind: "text", placeholder: "10:00-15:00" },
       { key: "pickup_instructions", label: "הוראות איסוף", kind: "textarea" },
       { key: "business_hours", label: "שעות פעילות", kind: "text" },
+      { key: "friday_pickup", label: "איסוף בשישי", kind: "switch", hint: "כבוי: ביום שישי עצמו אי אפשר להזמין באתר לאיסוף עצמי." },
+      { key: "friday_delivery", label: "משלוחים בשישי", kind: "switch", hint: "כבוי: ביום שישי עצמו אי אפשר להזמין באתר משלוח." },
     ],
   },
   {

@@ -4,7 +4,8 @@ import { isStallSaleOrder } from "@/lib/utils";
 import { dayRange, weekOrdersRange } from "@/lib/staff/work/ranges";
 import { summarizeSales } from "@/lib/staff/work/sales";
 import { isStallManager } from "@/lib/staff/work/stall-access";
-import { jsonError, stallAccess, workContext } from "@/lib/staff/work/server";
+import { canSellNow, jsonError, stallAccess, workContext } from "@/lib/staff/work/server";
+import { lockStallsIfDue } from "@/lib/staff/ops/stall-split-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,6 +23,7 @@ export async function GET(req: Request) {
 
   try {
     const { admin, settings, week, today } = await workContext();
+    await lockStallsIfDue(admin);
     const { stalls, defaultId } = await stallAccess(admin, me, today);
     const requested = new URL(req.url).searchParams.get("stall_id");
     const stall = stalls.find((s) => s.id === requested) ?? stalls.find((s) => s.id === defaultId) ?? null;
@@ -29,6 +31,8 @@ export async function GET(req: Request) {
     const base = {
       today,
       canChooseStall: isStallManager(me),
+      // Sales open on Friday morning; before that the screen is for looking and preparing.
+      canSell: canSellNow(),
       stalls: stalls.map((s) => ({ id: s.id, name: s.name, location: s.location ?? null })),
       bit: { number: settings.stall_bit_number ?? "", qr_url: settings.stall_bit_qr_url ?? "" },
     };
@@ -71,10 +75,10 @@ export async function GET(req: Request) {
           .eq("work_date", today),
         admin
           .from("orders")
-          .select(
-            "id, created_at, customer_name, customer_phone, items, total_amount, payment_method, notes, greeting_note, order_type",
-          )
-          .eq("status", "approved")
+          // "*" so it works before and after migration 043 (pickup_stall_id).
+          .select("*")
+          // Handed-over ones stay listed so a mistaken "נמסר" can be undone.
+          .in("status", ["approved", "completed"])
           .eq("delivery_type", "pickup")
           .neq("order_type", "stall")
           .gte("created_at", weekRange.from)
@@ -122,7 +126,25 @@ export async function GET(req: Request) {
       })),
       equipment: equipRes.data ?? [],
       checklists,
-      pickupOrders: (pickupRes.data ?? []).filter((o) => !isStallSaleOrder(o)),
+      // Orders picked up at this stall (older orders without a stall show at every stall).
+      pickupOrders: (pickupRes.data ?? [])
+        .filter((o) => !isStallSaleOrder(o))
+        .filter((o) => !o.pickup_stall_id || o.pickup_stall_id === stall.id)
+        .map((o) => ({
+          id: o.id,
+          created_at: o.created_at,
+          customer_name: o.customer_name,
+          customer_phone: o.customer_phone,
+          items: o.items,
+          total_amount: o.total_amount,
+          payment_method: o.payment_method,
+          notes: o.notes,
+          greeting_note: o.greeting_note,
+          order_type: o.order_type,
+          status: o.status,
+        }))
+        // Waiting ones first.
+        .sort((a, b) => Number(a.status === "completed") - Number(b.status === "completed")),
     });
   } catch (e) {
     console.error("staff/stall GET failed:", e);

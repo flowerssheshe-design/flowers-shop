@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import type { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getServerSettings, type ServerSettings } from "@/lib/settings-server";
-import { currentBusinessWeek, israelDate, type BusinessWeek } from "@/lib/staff/week";
+import { currentBusinessWeek, israelDate, israelWeekday, type BusinessWeek } from "@/lib/staff/week";
 import type { StaffEmployee } from "@/lib/staff/session";
 import {
   allowedStalls,
@@ -50,12 +50,17 @@ export async function parseBody<S extends z.ZodTypeAny>(
   return { ok: true, data: parsed.data };
 }
 
-/** Stalls this person may work at today, and the one to open first. */
+/**
+ * Stalls this person may work at, and the one to open first. The stalls sell
+ * on Friday only, so a stall shift anywhere in the current business week opens
+ * the stall screen from the moment the person is scheduled.
+ */
 export async function stallAccess(
   admin: Admin,
   me: StaffEmployee,
-  today: string,
+  _today: string,
 ): Promise<{ stalls: StallRow[]; defaultId: string | null }> {
+  const week = currentBusinessWeek(await getServerSettings());
   const [{ data: stalls, error: stallsErr }, { data: shifts, error: shiftsErr }] = await Promise.all([
     admin
       .from("stalls")
@@ -67,7 +72,8 @@ export async function stallAccess(
       .from("shifts")
       .select("stall_id, shift_type, start_time")
       .eq("employee_id", me.id)
-      .eq("work_date", today)
+      .gte("work_date", week.weekStart)
+      .lte("work_date", week.weekEnd)
       .eq("shift_type", "stall"),
   ]);
   if (stallsErr) throw stallsErr;
@@ -77,7 +83,7 @@ export async function stallAccess(
   return { stalls: allowed, defaultId: defaultStallId(allowed, myShifts) };
 }
 
-/** The stall if this person may work at it today, else null. */
+/** The stall if this person is scheduled at it this week (or manages stalls), else null. */
 export async function checkStall(
   admin: Admin,
   me: StaffEmployee,
@@ -104,4 +110,11 @@ export async function stallAdjust(
   return data === null || data === undefined ? null : Number(data);
 }
 
-export const NO_STALL_ACCESS = "אין לך משמרת בדוכן הזה היום";
+export const NO_STALL_ACCESS = "לא שובצת לדוכן הזה השבוע";
+
+/** The stalls sell on Friday only (Israel time, from Friday morning). */
+export function canSellNow(now: Date = new Date()): boolean {
+  return israelWeekday(now) === 5;
+}
+
+export const SALES_CLOSED = "המכירה בדוכן נפתחת ביום שישי בבוקר.";

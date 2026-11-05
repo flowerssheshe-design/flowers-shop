@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canReceiveBudget, checkAllocations, type BudgetCandidate } from "./budget";
+import { assignedForBudget, canReceiveBudget, checkAllocations, type BudgetCandidate } from "./budget";
 import { checkOpsEmployeeInput, isOpsManageable } from "./team";
 import { allocatedTotal, unallocated } from "@/lib/staff/payroll";
 import { budgetRemainderLine, computePayroll } from "@/lib/staff/owner/week-math";
@@ -93,5 +93,25 @@ describe("multiple responsibilities", () => {
     expect(canWorkShift(m, "stall")).toBe(true);
     expect(canWorkShift(m, "courier")).toBe(false);
     expect(canReceiveBudget(m)).toBe(true);
+  });
+});
+
+describe("budget goes only to staffed people", () => {
+  it("counts stall/courier shifts and the week courier as staffed", () => {
+    const set = assignedForBudget({
+      shifts: [
+        { employee_id: "seller", shift_type: "stall" },
+        { employee_id: "runner", shift_type: "supply" },
+      ],
+      courierId: "courier",
+    });
+    expect(Array.from(set).sort()).toEqual(["courier", "seller"]);
+  });
+
+  it("refuses money for someone not staffed this week, but allows zero", () => {
+    const staffed = new Set(["seller"]);
+    expect(checkAllocations(500, [{ employee_id: "seller", amount: 100 }], byId, staffed).ok).toBe(true);
+    expect(checkAllocations(500, [{ employee_id: "ops", amount: 100 }], byId, staffed).ok).toBe(false);
+    expect(checkAllocations(500, [{ employee_id: "ops", amount: 0 }], byId, staffed).ok).toBe(true);
   });
 });

@@ -8,9 +8,12 @@ import {
   jsonError,
   NO_STALL_ACCESS,
   parseBody,
+  SALES_CLOSED,
+  canSellNow,
   stallAdjust,
   workContext,
 } from "@/lib/staff/work/server";
+import { lockStallsIfDue } from "@/lib/staff/ops/stall-split-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,7 +49,9 @@ export async function POST(req: Request) {
   const { stall_id, payment_method, items: lines } = body.data;
 
   try {
-    const { admin, today } = await workContext();
+    const { admin, today, now } = await workContext();
+    if (!canSellNow(now)) return jsonError(SALES_CLOSED, 409);
+    await lockStallsIfDue(admin);
     const stall = await checkStall(admin, me, today, stall_id);
     if (!stall) return jsonError(NO_STALL_ACCESS, 403);
 
@@ -79,6 +84,19 @@ export async function POST(req: Request) {
           await stallAdjust(admin, stall.id, productId, qty);
         },
       });
+      // The general stock includes what is at the stalls, so a stall sale comes off it too.
+      steps.push({
+        run: async () => {
+          const { data: after, error } = await admin.rpc("decrement_inventory", { p_product_id: productId, p_qty: qty });
+          if (error || after === null || after === undefined) {
+            const title = productMap.get(productId)?.title ?? "";
+            throw new StepError(`"${title}" אזל במלאי הכללי`, 409);
+          }
+        },
+        undo: async () => {
+          await admin.rpc("increment_inventory", { p_product_id: productId, p_qty: qty });
+        },
+      });
     }
     steps.push({
       run: async () => {
@@ -100,9 +118,8 @@ export async function POST(req: Request) {
             order_type: "stall",
             stall_id: stall.id,
             sold_by: me.id,
-            // Stall stock was moved out of the general stock at distribution,
-            // so this order does not touch the global inventory.
-            inventory_deducted: false,
+            // Came off the stall's stock and the general stock (see the steps above).
+            inventory_deducted: true,
           })
           .select("id, created_at, items, total_amount, payment_method, status, sold_by")
           .single();

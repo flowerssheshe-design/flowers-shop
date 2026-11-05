@@ -38,6 +38,12 @@ export async function POST(req: Request) {
 
     const after = await stallAdjust(admin, stall.id, product_id, -qty);
     if (after === null) return jsonError("אין מספיק מהזר הזה במלאי הדוכן", 409);
+    // The general stock includes what is at the stalls.
+    const { data: genAfter, error: genErr } = await admin.rpc("decrement_inventory", { p_product_id: product_id, p_qty: qty });
+    if (genErr || genAfter === null || genAfter === undefined) {
+      await stallAdjust(admin, stall.id, product_id, qty).catch(() => undefined);
+      return jsonError("אין מספיק מהזר הזה במלאי הכללי", 409);
+    }
 
     const { error } = await admin.from("stall_writeoffs").insert({
       stall_id: stall.id,
@@ -51,6 +57,7 @@ export async function POST(req: Request) {
       await stallAdjust(admin, stall.id, product_id, qty).catch((e) =>
         console.error("write-off rollback failed:", e),
       );
+      await admin.rpc("increment_inventory", { p_product_id: product_id, p_qty: qty });
       return jsonError("הרישום נכשל. נסו שוב.", 500);
     }
     return NextResponse.json({ ok: true, stock: after }, { status: 201 });

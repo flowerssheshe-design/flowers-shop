@@ -38,6 +38,10 @@ export type Stall = {
   location: string | null;
   is_active: boolean;
   is_open: boolean;
+  /** Customers can choose this stall as their pickup point. */
+  is_pickup_point: boolean;
+  /** The courier takes delivery bouquets from this stall. */
+  is_delivery_point?: boolean;
   sort_order: number;
 };
 

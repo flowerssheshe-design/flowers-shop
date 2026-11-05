@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { PackageCheck, Phone } from "lucide-react";
+import { PackageCheck, Phone, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toaster";
 import { formatILS } from "@/lib/utils";
@@ -32,19 +32,40 @@ export function PickupOrders({ orders, onChanged }: { orders: PickupOrder[]; onC
     }
   }
 
+  async function undoHandOver(o: PickupOrder) {
+    if (!window.confirm(`לבטל את אישור המסירה?
+${o.customer_name}`)) return;
+    setBusy(o.id);
+    try {
+      await api(`/api/staff/stall/pickup/${o.id}`, { method: "DELETE" });
+      toast({ title: "המסירה בוטלה. ההזמנה מחכה שוב בדוכן.", variant: "success" });
+      onChanged();
+    } catch (e) {
+      toast({ title: e instanceof Error ? e.message : T.saveError, variant: "error" });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const waiting = orders.filter((o) => o.status !== "completed").length;
+
   return (
-    <Card title={`${W.pickupOrders} (${orders.length})`} description={W.pickupOrdersDesc}>
+    <Card title={`${W.pickupOrders} (${waiting})`} description={W.pickupOrdersDesc}>
       {orders.length === 0 ? (
         <EmptyBlock text={W.noPickupOrders} />
       ) : (
         <ul className="space-y-3">
           {orders.map((o) => {
             const pay = paymentStatus(o);
+            const handed = o.status === "completed";
             return (
-              <li key={o.id} className="rounded-lg border p-3">
+              <li key={o.id} className={handed ? "rounded-lg border bg-muted/40 p-3 opacity-80" : "rounded-lg border p-3"}>
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="font-semibold">{o.customer_name}</p>
+                    <p className="font-semibold">
+                      {o.customer_name}
+                      {handed && <span className="ms-2 text-sm font-normal text-primary">✓ נמסר</span>}
+                    </p>
                     <p className="text-xs text-muted-foreground">{formatDateTime(o.created_at)}</p>
                   </div>
                   {o.customer_phone && (
@@ -81,10 +102,17 @@ export function PickupOrders({ orders, onChanged }: { orders: PickupOrder[]; onC
                     <span>{formatILS(o.total_amount)}</span>
                   )}
                 </p>
-                <Button className="mt-3 h-12 w-full text-base" onClick={() => void handOver(o)} disabled={busy === o.id}>
-                  <PackageCheck className="h-5 w-5" aria-hidden="true" />
-                  {busy === o.id ? "מעדכן…" : W.handedOver}
-                </Button>
+                {handed ? (
+                  <Button variant="outline" className="mt-3 h-12 w-full text-base" onClick={() => void undoHandOver(o)} disabled={busy === o.id}>
+                    <Undo2 className="h-5 w-5" aria-hidden="true" />
+                    {busy === o.id ? "מעדכן…" : "ביטול אישור המסירה"}
+                  </Button>
+                ) : (
+                  <Button className="mt-3 h-12 w-full text-base" onClick={() => void handOver(o)} disabled={busy === o.id}>
+                    <PackageCheck className="h-5 w-5" aria-hidden="true" />
+                    {busy === o.id ? "מעדכן…" : W.handedOver}
+                  </Button>
+                )}
               </li>
             );
           })}

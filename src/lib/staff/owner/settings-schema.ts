@@ -30,6 +30,8 @@ export const SettingsSchema = z
     pickup_instructions: text(1000),
     pickup_hours: text(200),
     business_hours: text(300),
+    friday_delivery: z.boolean(),
+    friday_pickup: z.boolean(),
     // contact and payment
     business_phone: text(30),
     contact_phone: text(30),

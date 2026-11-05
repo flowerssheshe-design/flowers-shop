@@ -64,6 +64,10 @@ export const StallUpdateSchema = z.object({
   location: z.string().trim().max(200).nullable().optional(),
   is_active: z.boolean().optional(),
   is_open: z.boolean().optional(),
+  /** Customers can choose this stall as their pickup point. */
+  is_pickup_point: z.boolean().optional(),
+  /** The courier takes delivery bouquets from this stall. */
+  is_delivery_point: z.boolean().optional(),
   sort_order: z.number().int().min(0).max(9999).optional(),
 });
 
