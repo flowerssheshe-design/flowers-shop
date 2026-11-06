@@ -25,7 +25,7 @@ import {
 } from "@/lib/staff/owner/data";
 import { notConfigured, serverError } from "@/lib/staff/owner/api";
 import { loadPayrollEmployees } from "./shared";
-import { buildPaymentsView, type PaymentRow } from "@/lib/staff/owner/payments";
+import { buildPaymentsView, exclusionKey, type PaymentRow } from "@/lib/staff/owner/payments";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -48,7 +48,7 @@ export async function GET() {
     const settings = await getServerSettings();
     const week = currentBusinessWeek(settings, now);
 
-    const [people, payEmployees, ctx, entriesRes, shifts, snapshots, budgets, bw, paymentsRes] = await Promise.all([
+    const [people, payEmployees, ctx, entriesRes, shifts, snapshots, budgets, bw, paymentsRes, exclusionsRes] = await Promise.all([
       loadPayrollEmployees(admin),
       loadEmployees(admin),
       loadPayContext(admin),
@@ -67,7 +67,14 @@ export async function GET() {
         .select("id, week_start, employee_id, amount, note, paid_at")
         .order("paid_at", { ascending: false })
         .limit(5000),
+      // ✗ marks (migration 047); missing table = nothing skipped.
+      admin.from("payroll_exclusions").select("week_start, employee_id, part").limit(5000),
     ]);
+    const exclusions = new Set(
+      ((exclusionsRes.error ? [] : exclusionsRes.data ?? []) as { week_start: string; employee_id: string; part: string }[]).map((x) =>
+        exclusionKey(String(x.week_start).slice(0, 10), String(x.employee_id), String(x.part)),
+      ),
+    );
     if (entriesRes.error && !isMissingTableError(entriesRes.error)) return serverError("payroll entries", entriesRes.error);
     const ready = !entriesRes.error;
 
@@ -169,6 +176,7 @@ export async function GET() {
             }),
           ),
           names,
+          exclusions,
           now,
           startWeek: moneyStartWeek(settings),
         });

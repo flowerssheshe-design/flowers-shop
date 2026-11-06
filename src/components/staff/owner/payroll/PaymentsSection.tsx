@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Check, Plus, Trash2, Undo2 } from "lucide-react";
+import { Check, Plus, Trash2, Undo2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toaster";
@@ -197,8 +197,37 @@ function PersonCard({ weekStart, person, onChanged }: { weekStart: string; perso
       <ul className="mt-2 space-y-1 text-sm">
         {person.parts.map((part, i) => (
           <li key={i} className="flex items-center justify-between gap-2">
-            <span className="min-w-0 truncate">{part.label}</span>
-            <span className="flex shrink-0 items-center gap-1 tabular-nums">
+            <span className="flex min-w-0 items-center gap-2">
+              {/* ✓ = paid this week, ✗ = skipped this week only. */}
+              <button
+                type="button"
+                role="switch"
+                aria-checked={!part.excluded}
+                aria-label={`${part.excluded ? "להחזיר" : "לא לשלם השבוע"}: ${part.label}`}
+                title={part.excluded ? "לא משולם השבוע. לחיצה מחזירה." : "לחיצה: לא לשלם את זה השבוע"}
+                disabled={busy}
+                onClick={() =>
+                  void run(
+                    () =>
+                      sendJson("/api/staff/payroll/exclusions", "PUT", {
+                        employee_id: person.employee_id,
+                        week_start: weekStart,
+                        part: part.key,
+                        excluded: !part.excluded,
+                      }),
+                    part.excluded ? `${part.label}: חזר לתשלום` : `${part.label}: לא ישולם השבוע`,
+                  )
+                }
+                className={cn(
+                  "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border",
+                  part.excluded ? "border-destructive/40 bg-destructive/10 text-destructive" : "border-primary/40 bg-primary/10 text-primary",
+                )}
+              >
+                {part.excluded ? <X className="h-4 w-4" /> : <Check className="h-4 w-4" />}
+              </button>
+              <span className={cn("min-w-0 truncate", part.excluded && "text-muted-foreground line-through")}>{part.label}</span>
+            </span>
+            <span className={cn("flex shrink-0 items-center gap-1 tabular-nums", part.excluded && "text-muted-foreground line-through")}>
               {formatILS(part.amount)}
               {part.entryId && (
                 <button

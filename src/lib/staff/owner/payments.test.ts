@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPaymentsView } from "./payments";
+import { buildPaymentsView, exclusionKey } from "./payments";
 import type { PayrollLine } from "./week-math";
 
 const line = (id: string, amount: number, extra: Partial<PayrollLine> = {}): PayrollLine => ({
@@ -62,5 +62,23 @@ describe("payments view", () => {
     });
     expect(v.summary[0]).toMatchObject({ paidLast30: 50, paidAll: 150, owed: 150 });
     expect(v.totals).toEqual({ paidLast30: 50, paidAll: 150, owed: 150 });
+  });
+});
+
+describe("✓/✗ on a pay part", () => {
+  it("a skipped part is listed but not counted", () => {
+    const v = buildPaymentsView({
+      currentWeekStart: "2026-11-01",
+      names: new Map([["yael", "יעל"]]),
+      now: new Date("2026-11-06T12:00:00Z"),
+      linesByWeek: new Map([["2026-11-01", [line("yael", 250, { fromResponsibility: 100 })]]]),
+      entries: [],
+      payments: [],
+      exclusions: new Set([exclusionKey("2026-11-01", "yael", "responsibility")]),
+    });
+    const yael = v.weeks[0].people[0];
+    expect(yael.due).toBe(150);
+    expect(yael.parts.find((p) => p.key === "responsibility")?.excluded).toBe(true);
+    expect(v.summary[0].owed).toBe(150);
   });
 });

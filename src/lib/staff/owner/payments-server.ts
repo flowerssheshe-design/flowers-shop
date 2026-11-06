@@ -5,7 +5,7 @@ import { moneyStartWeek } from "@/lib/staff/money-start";
 import { currentBusinessWeek, israelDate } from "@/lib/staff/week";
 import { computePayroll } from "./week-math";
 import { payLinesByWeek } from "./pay-summary";
-import { buildPaymentsView, type PaymentRow, type PaymentsView } from "./payments";
+import { buildPaymentsView, exclusionKey, type PaymentRow, type PaymentsView } from "./payments";
 import { loadAllBudgets, loadAllPayrollWeeks, loadEmployees, loadPayContext, loadShifts } from "./data";
 
 type Admin = ReturnType<typeof createAdminClient>;
@@ -17,13 +17,14 @@ type Admin = ReturnType<typeof createAdminClient>;
 export async function loadPaymentsView(admin: Admin, now: Date = new Date()): Promise<PaymentsView | null> {
   const settings = await getServerSettings();
   const week = currentBusinessWeek(settings, now);
-  const [employees, ctx, shifts, snapshots, budgets, paymentsRes] = await Promise.all([
+  const [employees, ctx, shifts, snapshots, budgets, paymentsRes, exclusionsRes] = await Promise.all([
     loadEmployees(admin),
     loadPayContext(admin),
     loadShifts(admin, week.weekStart, week.weekEnd),
     loadAllPayrollWeeks(admin),
     loadAllBudgets(admin),
     admin.from("payroll_payments").select("id, week_start, employee_id, amount, note, paid_at").limit(5000),
+    admin.from("payroll_exclusions").select("week_start, employee_id, part").limit(5000),
   ]);
   if (paymentsRes.error) return null;
 
@@ -51,6 +52,11 @@ export async function loadPaymentsView(admin: Admin, now: Date = new Date()): Pr
       }),
     ),
     names,
+    exclusions: new Set(
+      ((exclusionsRes.error ? [] : exclusionsRes.data ?? []) as { week_start: string; employee_id: string; part: string }[]).map((x) =>
+        exclusionKey(String(x.week_start).slice(0, 10), String(x.employee_id), String(x.part)),
+      ),
+    ),
     now,
     startWeek: moneyStartWeek(settings),
   });

@@ -15,7 +15,20 @@ export type PaymentRow = {
 
 export type EntryRow = { id: string; week_start: string; employee_id: string | null; description: string; amount: number };
 
-export type DuePart = { label: string; amount: number; entryId?: string };
+export type DuePart = {
+  label: string;
+  amount: number;
+  /** "base", "responsibility" or "entry:<id>": what ✓/✗ refers to. */
+  key: string;
+  /** ✗: not paid this week, so not counted in `due`. */
+  excluded: boolean;
+  entryId?: string;
+};
+
+/** "week|employee|part" for a skipped (✗) part. */
+export function exclusionKey(week: string, employeeId: string, part: string): string {
+  return `${week}|${employeeId}|${part}`;
+}
 
 export type DuePerson = {
   employee_id: string;
@@ -66,6 +79,8 @@ export function buildPaymentsView(input: {
   entries: EntryRow[];
   payments: PaymentRow[];
   names: Map<string, string>;
+  /** Skipped parts (exclusionKey). */
+  exclusions?: Set<string>;
   now: Date;
   /** Weeks before this Sunday are not counted ("סופרים כסף מתאריך"). */
   startWeek?: string | null;
@@ -79,6 +94,7 @@ export function buildPaymentsView(input: {
 
   const dueAll = new Map<string, number>();
   const nameOf = (id: string, fallback?: string) => input.names.get(id) ?? fallback ?? "עובד";
+  const skipped = input.exclusions ?? new Set<string>();
   const out: DueWeek[] = [];
 
   Array.from(weeks)
@@ -100,16 +116,22 @@ export function buildPaymentsView(input: {
         const entries = Number(l.fromEntries) || 0;
         const resp = Number(l.fromResponsibility) || 0;
         const base = round2((Number(l.amount) || 0) - entries - resp);
-        if (base > 0) p.parts.push({ label: baseLabel(l), amount: base });
-        if (resp > 0) p.parts.push({ label: "תוספת אחריות", amount: round2(resp) });
-        p.due = round2(p.due + (Number(l.amount) || 0) - entries);
+        const add = (key: string, label: string, amount: number) => {
+          const excluded = skipped.has(exclusionKey(w, l.employee_id, key));
+          p.parts.push({ label, amount, key, excluded });
+          if (!excluded) p.due = round2(p.due + amount);
+        };
+        if (base > 0) add("base", baseLabel(l), base);
+        if (resp > 0) add("responsibility", "תוספת אחריות", round2(resp));
       }
       // One-off items are listed one by one (they may be added to closed weeks too).
       for (const e of input.entries) {
         if (e.week_start !== w || !e.employee_id) continue;
         const p = get(e.employee_id);
-        p.parts.push({ label: e.description, amount: round2(e.amount), entryId: e.id });
-        p.due = round2(p.due + e.amount);
+        const key = `entry:${e.id}`;
+        const excluded = skipped.has(exclusionKey(w, e.employee_id, key));
+        p.parts.push({ label: e.description, amount: round2(e.amount), key, excluded, entryId: e.id });
+        if (!excluded) p.due = round2(p.due + e.amount);
       }
       for (const pay of input.payments) {
         if (pay.week_start !== w) continue;
@@ -118,7 +140,7 @@ export function buildPaymentsView(input: {
         p.paid = round2(p.paid + pay.amount);
       }
       const list = Array.from(people.values())
-        .filter((p) => p.due > 0 || p.paid > 0)
+        .filter((p) => p.parts.length > 0 || p.paid > 0)
         .map((p) => ({ ...p, left: Math.max(0, round2(p.due - p.paid)) }))
         .sort((a, b) => b.left - a.left || a.full_name.localeCompare(b.full_name, "he"));
       for (const p of list) dueAll.set(p.employee_id, round2((dueAll.get(p.employee_id) ?? 0) + p.due));
