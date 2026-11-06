@@ -37,3 +37,24 @@ export async function PATCH(req: Request, ctx: { params: { id: string } }) {
     return serverError(e, "request PATCH");
   }
 }
+
+/** Delete a request: owners any request, an employee their own. */
+export async function DELETE(_req: Request, ctx: { params: { id: string } }) {
+  const guard = await requireStaff("me");
+  if (!guard.ok) return guard.response;
+  const nc = notConfigured();
+  if (nc) return nc;
+  if (!UUID_RE.test(ctx.params.id)) return jsonError("הפנייה לא נמצאה", 404);
+  const me = guard.session.employee;
+
+  try {
+    let q = createAdminClient().from("staff_requests").delete().eq("id", ctx.params.id);
+    if (!canManageTeam(me)) q = q.eq("employee_id", me.id);
+    const { data, error } = await q.select("id");
+    if (error) return serverError(error, "request DELETE");
+    if (!data || data.length === 0) return jsonError("הפנייה לא נמצאה", 404);
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    return serverError(e, "request DELETE");
+  }
+}

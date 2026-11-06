@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ArrowLeft, CheckCircle2, MessageSquare, RotateCcw } from "lucide-react";
+import { ArrowLeft, CheckCircle2, MessageSquare, RotateCcw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toaster";
@@ -126,6 +126,20 @@ function RequestItem({ r, onChanged }: { r: StaffRequestView; onChanged: () => v
   const [busy, setBusy] = React.useState(false);
   const handled = Boolean(r.resolved_at);
 
+  async function remove() {
+    if (!window.confirm("למחוק את הפנייה? אי אפשר לבטל.")) return;
+    setBusy(true);
+    try {
+      await opsFetch(`/api/staff/requests/${r.id}`, { method: "DELETE" });
+      toast({ title: "הפנייה נמחקה", variant: "success" });
+      onChanged();
+    } catch (e) {
+      toast({ title: e instanceof Error ? e.message : T.saveError, variant: "error" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function setResolved(resolved: boolean) {
     setBusy(true);
     try {
@@ -147,10 +161,16 @@ function RequestItem({ r, onChanged }: { r: StaffRequestView; onChanged: () => v
       <p className="mt-1 whitespace-pre-wrap text-sm">{r.body}</p>
       {r.reply && <p className="mt-1 rounded bg-primary/5 p-2 text-sm">התשובה שלך: {r.reply}</p>}
       {handled ? (
-        <Button variant="ghost" size="sm" className="mt-2" onClick={() => void setResolved(false)} disabled={busy}>
-          <RotateCcw className="h-4 w-4" aria-hidden="true" />
-          לפתוח שוב
-        </Button>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <Button variant="ghost" size="sm" onClick={() => void setResolved(false)} disabled={busy}>
+            <RotateCcw className="h-4 w-4" aria-hidden="true" />
+            לפתוח שוב
+          </Button>
+          <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => void remove()} disabled={busy}>
+            <Trash2 className="h-4 w-4" aria-hidden="true" />
+            מחיקה
+          </Button>
+        </div>
       ) : (
         <div className="mt-2 space-y-2">
           {replying && (
@@ -166,6 +186,10 @@ function RequestItem({ r, onChanged }: { r: StaffRequestView; onChanged: () => v
                 להוסיף תשובה
               </Button>
             )}
+            <Button variant="ghost" className="h-11 text-destructive hover:text-destructive" onClick={() => void remove()} disabled={busy}>
+              <Trash2 className="h-4 w-4" aria-hidden="true" />
+              מחיקה
+            </Button>
           </div>
         </div>
       )}

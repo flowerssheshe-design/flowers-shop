@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { MessageSquare } from "lucide-react";
+import { MessageSquare, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toaster";
@@ -37,6 +37,17 @@ export function RequestsCard() {
     }
   }
 
+  async function remove(id: string) {
+    if (!window.confirm("למחוק את הפנייה?")) return;
+    try {
+      await api(`/api/staff/requests/${id}`, { method: "DELETE" });
+      toast({ title: "הפנייה נמחקה", variant: "success" });
+      void reload(true);
+    } catch (e) {
+      toast({ title: e instanceof Error ? e.message : T.saveError, variant: "error" });
+    }
+  }
+
   const mine = data?.requests ?? [];
   return (
     <Card title="פנייה למנהל" description="משהו שצריך לטפל בו, בקשה או שאלה. המנהל הראשי יראה את זה במשימות שלו.">
@@ -50,9 +61,19 @@ export function RequestsCard() {
           {mine.slice(0, 10).map((r) => (
             <li key={r.id} className="rounded-lg border p-3 text-sm">
               <p className="whitespace-pre-wrap">{r.body}</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {when(r.created_at)} · {r.resolved_at ? "טופל" : "ממתין"}
-              </p>
+              <div className="mt-1 flex items-center justify-between gap-2">
+                <p className="text-xs text-muted-foreground">
+                  {when(r.created_at)} · {r.resolved_at ? "טופל" : "ממתין"}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void remove(r.id)}
+                  className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-destructive"
+                >
+                  <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                  מחיקה
+                </button>
+              </div>
               {r.reply && <p className="mt-1 rounded bg-primary/5 p-2 text-sm">תשובת המנהל: {r.reply}</p>}
             </li>
           ))}
