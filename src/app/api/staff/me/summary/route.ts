@@ -191,11 +191,33 @@ export async function GET() {
       });
     }
 
+    // What was really paid to me this calendar month ("שולם" on the pay page). Null before migration 046.
+    const monthRange = dateSpanRange(month.first, month.last);
+    const paidRes = await admin
+      .from("payroll_payments")
+      .select("id, week_start, amount, paid_at")
+      .eq("employee_id", me.id)
+      .gte("paid_at", monthRange.from)
+      .lt("paid_at", monthRange.to)
+      .order("paid_at", { ascending: false });
+    const paidList = paidRes.error
+      ? null
+      : (paidRes.data ?? []).map((p) => ({
+          id: String(p.id),
+          week_start: String(p.week_start).slice(0, 10),
+          amount: Number(p.amount) || 0,
+          paid_at: String(p.paid_at),
+        }));
+    const paidThisMonth = paidList
+      ? { total: Math.round(paidList.reduce((s, p) => s + p.amount, 0) * 100) / 100, payments: paidList }
+      : null;
+
     return NextResponse.json({
       isOwner,
       today,
       week: { start: week.weekStart, end: week.weekEnd },
       month,
+      paidThisMonth,
       pay: {
         pay_type: payNow.pay_type,
         pay_rate: payNow.pay_rate === null || payNow.pay_rate === undefined ? null : Number(payNow.pay_rate),
