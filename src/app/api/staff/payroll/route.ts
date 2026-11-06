@@ -16,6 +16,7 @@ import {
 } from "@/lib/staff/owner/pay-summary";
 import {
   isMissingTableError,
+  carryBudgetForward,
   loadAllBudgets,
   loadAllPayrollWeeks,
   loadBusinessWeeks,
@@ -47,6 +48,7 @@ export async function GET() {
     const admin = createAdminClient();
     const settings = await getServerSettings();
     const week = currentBusinessWeek(settings, now);
+    await carryBudgetForward(admin, week.weekStart);
 
     const [people, payEmployees, ctx, entriesRes, shifts, snapshots, budgets, bw, paymentsRes, exclusionsRes] = await Promise.all([
       loadPayrollEmployees(admin),

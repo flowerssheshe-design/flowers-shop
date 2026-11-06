@@ -30,6 +30,8 @@ type SplitData = {
   percents: Record<string, number>;
   lockedAt: string | null;
   lockAt: string;
+  resetAt?: string | null;
+  resetNote?: string | null;
   stalls: SplitStall[];
   products: SplitProduct[];
   canEdit?: boolean;
@@ -129,7 +131,7 @@ export function StallSplitPanel({ onChanged }: { onChanged?: () => void }) {
   const lockOrUnlock = (lock: boolean) =>
     run(() => opsFetch<SplitData>(SPLIT_URL, { method: "POST", body: { locked: lock } }), lock ? "החלוקה ננעלה" : "החלוקה נפתחה");
 
-  const summary = `${data.mode === "count" ? "לפי כמות" : "לפי אחוזים"} · ${
+  const summary = data.resetAt && !locked ? "⚠ צריך לחלק מחדש: מה שהגיע מהספק השתנה" : `${data.mode === "count" ? "לפי כמות" : "לפי אחוזים"} · ${
     locked ? `ננעל (${when(data.lockedAt!)})` : `ננעל אוטומטית ב${when(data.lockAt)}`
   }`;
 
@@ -157,6 +159,12 @@ export function StallSplitPanel({ onChanged }: { onChanged?: () => void }) {
           </Badge>
         )}
       </div>
+
+      {!locked && data.resetAt && (
+        <p className="mb-3 rounded-md border border-destructive/40 bg-destructive/10 p-2 text-sm text-destructive">
+          <b>צריך לחלק מחדש.</b> {data.resetNote} החלוקה הקודמת בוטלה. רשמו כמה מכל זר כל דוכן מקבל, ואז לחצו &quot;נעילה עכשיו&quot;.
+        </p>
+      )}
 
       {locked && (
         <p className="mb-3 rounded-md border border-primary/30 bg-primary/5 p-2 text-sm">

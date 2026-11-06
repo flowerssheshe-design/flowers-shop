@@ -503,6 +503,8 @@ export type DashboardInput = {
   supplierLines: SupplierLineRow[];
   supplierOrderedAt: string | null;
   budget?: WeekBudget;
+  /** Takes out pay parts marked ✗ on the payments page (they are no cost). */
+  adjustPayroll?: (lines: PayrollLine[]) => PayrollLine[];
   /** Pay history and one-off payments (loadPayContext). Without it, pay uses the employee columns. */
   payContext?: PayContext;
 };
@@ -538,8 +540,9 @@ export function buildDashboard(input: DashboardInput): DashboardData {
   const deliveries = deliveriesByEmployee(input.orders, win);
 
   const ws = input.week.weekStart;
-  const scheduled = computePayroll(input.employees, weekShifts, deliveries, undefined, input.budget, input.payContext, ws);
-  const soFarLines = computePayroll(input.employees, weekShifts, deliveries, today, input.budget, input.payContext, ws);
+  const adjust = input.adjustPayroll ?? ((l: PayrollLine[]) => l);
+  const scheduled = adjust(computePayroll(input.employees, weekShifts, deliveries, undefined, input.budget, input.payContext, ws));
+  const soFarLines = adjust(computePayroll(input.employees, weekShifts, deliveries, today, input.budget, input.payContext, ws));
   // Lines without an employee (budget remainder, one-off payments) count in full in "so far".
   const soFarById = new Map(soFarLines.filter((l) => l.employee_id).map((l) => [l.employee_id, l.amount]));
   const payrollSoFar = sumPayroll(soFarLines);

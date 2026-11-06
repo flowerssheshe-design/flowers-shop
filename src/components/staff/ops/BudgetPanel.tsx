@@ -116,7 +116,7 @@ export function BudgetPanel({ week, meId }: { week: string; meId: string }) {
       className={cn(loading && "opacity-60")}
     >
       <p className="mb-3 text-xs text-muted-foreground">
-        רק למי ששובץ השבוע בדוכן או כשליח. המנהלים קובעים את הסכום, ומנהל המשמרות מחלק אותו.
+        רק למי ששובץ השבוע בדוכן או כשליח. המנהלים קובעים את הסכום, ומנהל המשמרות מחלק אותו. הסכום עובר לשבוע הבא כמו שהוא, עד שמשנים אותו.
       </p>
 
       {/* Budget amount */}

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { applyPayExclusions, exclusionKey } from "@/lib/staff/owner/payments";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireStaff } from "@/lib/staff/guard";
 import { getServerSettings } from "@/lib/settings-server";
@@ -9,6 +10,7 @@ import { autoMarkSupplierOrderIfDue } from "@/lib/staff/owner/supplier-server";
 import {
   ensureBusinessWeek,
   loadBudgets,
+  carryBudgetForward,
   loadBusinessWeeks,
   loadEmployees,
   loadExpenses,
@@ -52,6 +54,7 @@ export async function GET() {
     const week = modeInfo.week;
     const win = weekWindow(week, settings);
     await ensureBusinessWeek(admin, week.weekStart, week.supplierOrderAt);
+    await carryBudgetForward(admin, week.weekStart);
 
     const [orders, products, expenses, employees, shifts, stalls, stallStock, lines, bw, budgets, ctx] = await Promise.all([
       loadOrders(admin, win.from, win.to),
@@ -66,6 +69,13 @@ export async function GET() {
       loadBudgets(admin, [week.weekStart]),
       loadPayContext(admin),
     ]);
+    // ✗ pay parts from the payments page (migration 047; none before it).
+    const exRes = await admin.from("payroll_exclusions").select("week_start, employee_id, part").eq("week_start", week.weekStart);
+    const exclusions = new Set(
+      ((exRes.error ? [] : exRes.data ?? []) as { week_start: string; employee_id: string; part: string }[]).map((x) =>
+        exclusionKey(String(x.week_start).slice(0, 10), String(x.employee_id), String(x.part)),
+      ),
+    );
 
     // ctx (pay history + one-off pay entries) goes to every payroll calculation.
     const dashboardInput: DashboardInput = {
@@ -83,6 +93,7 @@ export async function GET() {
       supplierOrderedAt: bw[0]?.supplier_ordered_at ?? null,
       budget: budgets.get(week.weekStart),
       payContext: ctx,
+      adjustPayroll: (lines) => applyPayExclusions(lines, week.weekStart, exclusions, ctx.entries),
     };
     const dashboard = buildDashboard(dashboardInput);
 

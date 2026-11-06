@@ -6,7 +6,7 @@ import { currentBusinessWeek, israelDate } from "@/lib/staff/week";
 import { computePayroll } from "./week-math";
 import { payLinesByWeek } from "./pay-summary";
 import { buildPaymentsView, exclusionKey, type PaymentRow, type PaymentsView } from "./payments";
-import { loadAllBudgets, loadAllPayrollWeeks, loadEmployees, loadPayContext, loadShifts } from "./data";
+import { carryBudgetForward, loadAllBudgets, loadAllPayrollWeeks, loadEmployees, loadPayContext, loadShifts } from "./data";
 
 type Admin = ReturnType<typeof createAdminClient>;
 
@@ -17,6 +17,7 @@ type Admin = ReturnType<typeof createAdminClient>;
 export async function loadPaymentsView(admin: Admin, now: Date = new Date()): Promise<PaymentsView | null> {
   const settings = await getServerSettings();
   const week = currentBusinessWeek(settings, now);
+  await carryBudgetForward(admin, week.weekStart);
   const [employees, ctx, shifts, snapshots, budgets, paymentsRes, exclusionsRes] = await Promise.all([
     loadEmployees(admin),
     loadPayContext(admin),

@@ -189,3 +189,46 @@ export function buildPaymentsView(input: {
     },
   };
 }
+
+/**
+ * Takes the ✗ (skipped) parts out of a week's pay lines, so a skipped part
+ * is not a cost anywhere (money page, this week). Entries are the week's
+ * one-off items, needed to know what each "entry:<id>" was worth.
+ */
+export function applyPayExclusions(
+  lines: PayrollLine[],
+  weekStart: string,
+  exclusions: Set<string> | undefined,
+  entries: EntryRow[],
+): PayrollLine[] {
+  if (!exclusions || exclusions.size === 0) return lines;
+  return lines.map((l) => {
+    if (!l.employee_id || l.role === BUDGET_REMAINDER_ROLE || l.role === PAY_ENTRY_ROLE) return l;
+    const skip = (part: string) => exclusions.has(exclusionKey(weekStart, l.employee_id, part));
+    const fromEntries = Number(l.fromEntries) || 0;
+    const resp = Number(l.fromResponsibility) || 0;
+    const base = Math.max(0, (Number(l.amount) || 0) - fromEntries - resp);
+    let minus = 0;
+    let respLeft = resp;
+    let entriesLeft = fromEntries;
+    if (skip("base")) minus += base;
+    if (skip("responsibility")) {
+      minus += resp;
+      respLeft = 0;
+    }
+    for (const e of entries) {
+      if (e.week_start !== weekStart || e.employee_id !== l.employee_id) continue;
+      if (skip(`entry:${e.id}`)) {
+        minus += e.amount;
+        entriesLeft -= e.amount;
+      }
+    }
+    if (minus === 0) return l;
+    return {
+      ...l,
+      amount: Math.max(0, round2((Number(l.amount) || 0) - minus)),
+      fromResponsibility: round2(respLeft),
+      fromEntries: Math.max(0, round2(entriesLeft)),
+    };
+  });
+}

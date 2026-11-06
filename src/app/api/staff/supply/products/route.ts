@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireStaff } from "@/lib/staff/guard";
 import { jsonError, parseBody, workContext } from "@/lib/staff/work/server";
+import { resetSplitAfterDelivery } from "@/lib/staff/ops/stall-split-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -74,7 +75,9 @@ export async function POST(req: Request) {
         { onConflict: "week_start,product_id" },
       );
     }
-    return NextResponse.json({ product }, { status: 201 });
+    // A new bouquet after the Thursday lock isn't in any stall: cancel the split, tell the managers.
+    const splitReset = qty > 0 ? await resetSplitAfterDelivery(admin, `הגיע זר חדש מהספק: "${v.title}" (${qty}).`) : false;
+    return NextResponse.json({ product, splitReset }, { status: 201 });
   } catch (e) {
     console.error("staff/supply/products failed:", e);
     return jsonError("שגיאת שרת. נסו שוב.", 500);

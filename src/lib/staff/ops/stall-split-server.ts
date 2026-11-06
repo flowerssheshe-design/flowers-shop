@@ -41,6 +41,9 @@ export type StallSplitState = {
   closedForOrders: Set<string>;
   /** Friday and every stall is closed: the website can't take orders at all. */
   noOrders: boolean;
+  /** The split was cancelled because the supplier delivery changed after the lock: split again. */
+  resetAt: string | null;
+  resetNote: string | null;
 };
 
 function addQty(m: StallQty, stallId: string, productId: string, qty: number) {
@@ -71,7 +74,8 @@ export async function loadStallSplit(admin: Admin, opts: { autoLock?: boolean; n
   const [weekRes, stallsRes, productsRes, invRes, planRes, ordersRes] = await Promise.all([
     admin
       .from("business_weeks")
-      .select("stall_split_mode, stall_split_percents, stalls_locked_at")
+      // "*" so newer columns (split_reset_*, migration 048) come along when they exist.
+      .select("*")
       .eq("week_start", week.weekStart)
       .maybeSingle(),
     admin
@@ -96,7 +100,13 @@ export async function loadStallSplit(admin: Admin, opts: { autoLock?: boolean; n
   const err = weekRes.error ?? stallsRes.error ?? productsRes.error ?? invRes.error ?? planRes.error ?? ordersRes.error;
   if (err) throw new Error(`stall split: ${err.message}`);
 
-  const w = weekRes.data as { stall_split_mode?: string; stall_split_percents?: Record<string, number>; stalls_locked_at?: string | null } | null;
+  const w = weekRes.data as {
+    stall_split_mode?: string;
+    stall_split_percents?: Record<string, number>;
+    stalls_locked_at?: string | null;
+    split_reset_at?: string | null;
+    split_reset_note?: string | null;
+  } | null;
   const lockAt = lockTimeOf(week);
   let lockedAt = w?.stalls_locked_at ?? null;
 
@@ -161,7 +171,22 @@ export async function loadStallSplit(admin: Admin, opts: { autoLock?: boolean; n
     closedForOrders,
     noOrders,
   });
-  return { week, mode, percents, lockedAt, lockAt, stalls, products, plan, split, closedForOrders, noOrders };
+  const resetAt = lockedAt ? null : w?.split_reset_at ?? null;
+  return {
+    week,
+    mode,
+    percents,
+    lockedAt,
+    lockAt,
+    stalls,
+    products,
+    plan,
+    split,
+    closedForOrders,
+    noOrders,
+    resetAt,
+    resetNote: resetAt ? w?.split_reset_note ?? null : null,
+  };
 }
 
 /**
@@ -182,8 +207,10 @@ export async function lockStalls(admin: Admin, now: Date = new Date()): Promise<
     .select("week_start");
   if (error) throw new Error(`lock stalls: ${error.message}`);
   if (!claimed || claimed.length === 0) return false;
-  // Locked again: the next week's auto-lock works as usual (ignored before migration 044).
+  // Locked again: the next week's auto-lock works as usual, and a "split again" notice is done
+  // (each column is ignored before its migration, 044 / 048).
   await admin.from("business_weeks").update({ stalls_unlocked_at: null }).eq("week_start", state.week.weekStart);
+  await admin.from("business_weeks").update({ split_reset_at: null, split_reset_note: null }).eq("week_start", state.week.weekStart);
 
   // Start clean: nothing left over from older weeks.
   await admin.from("stall_inventory").update({ stock: 0, initial_stock: 0, updated_at: at }).gte("stock", 0);
@@ -313,6 +340,8 @@ export function splitPayload(state: StallSplitState) {
     mode: state.mode,
     percents: state.percents,
     lockedAt: state.lockedAt,
+    resetAt: state.resetAt,
+    resetNote: state.resetNote,
     lockAt: state.lockAt.toISOString(),
     stalls: state.stalls,
     products: state.products.map((p) => {
@@ -334,3 +363,29 @@ export function splitPayload(state: StallSplitState) {
   };
 }
 
+
+/**
+ * The supplier delivery changed after the split was locked (fewer / more than
+ * ordered, or a new bouquet): the old split is wrong, so it is cancelled
+ * completely (no automatic percent split either) and the managers are told to
+ * split again. Does nothing while the split is still open. Never throws.
+ */
+export async function resetSplitAfterDelivery(admin: Admin, note: string, now: Date = new Date()): Promise<boolean> {
+  try {
+    const settings = await getServerSettings();
+    const week = currentBusinessWeek(settings, now);
+    const { data } = await admin.from("business_weeks").select("stalls_locked_at").eq("week_start", week.weekStart).maybeSingle();
+    if (!(data as { stalls_locked_at?: string | null } | null)?.stalls_locked_at) return false;
+    await unlockStalls(admin, now);
+    await admin.from("stall_plan").delete().eq("week_start", week.weekStart);
+    await admin.from("business_weeks").update({ stall_split_mode: "count", stall_split_percents: {} }).eq("week_start", week.weekStart);
+    await admin
+      .from("business_weeks")
+      .update({ split_reset_at: now.toISOString(), split_reset_note: note })
+      .eq("week_start", week.weekStart);
+    return true;
+  } catch (e) {
+    console.error("resetSplitAfterDelivery:", e);
+    return false;
+  }
+}

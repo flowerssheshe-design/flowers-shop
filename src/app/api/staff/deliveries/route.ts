@@ -8,8 +8,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const FIELDS =
-  "id, created_at, customer_name, customer_phone, delivery_address, items, total_amount, delivery_fee, payment_method, notes, greeting_note, status, order_type, delivered_at, delivered_by";
+// "*" so pickup_stall_id (the stall the bouquets come from, migration 043) comes along when it exists.
+const FIELDS = "*";
 
 /**
  * The week's delivery orders for the courier of the week (and owner / ops):
@@ -53,15 +53,23 @@ export async function GET() {
       return jsonError("לא הצלחנו לטעון את המשלוחים. נסו לרענן.", 500);
     }
 
-    const pending = (pendingRes.data ?? []).map((o) => ({
+    // Where the courier picks up each delivery's bouquets (the delivery-point stall).
+    const { data: stallRows } = await admin.from("stalls").select("id, name, location");
+    const stallsById = new Map((stallRows ?? []).map((s) => [String(s.id), { name: String(s.name), location: (s.location as string | null) ?? null }]));
+    const withSource = <T extends Record<string, unknown>>(o: T) => ({
       ...o,
+      take_from: o.pickup_stall_id ? stallsById.get(String(o.pickup_stall_id)) ?? null : null,
+    });
+
+    const pending = (pendingRes.data ?? []).map((o) => ({
+      ...withSource(o as Record<string, unknown>),
       from_earlier_week: String(o.created_at) < range.from,
     }));
     return NextResponse.json({
       ...base,
       allowed: true,
       pending,
-      delivered: doneRes.data ?? [],
+      delivered: (doneRes.data ?? []).map((o) => withSource(o as Record<string, unknown>)),
     });
   } catch (e) {
     console.error("staff/deliveries GET failed:", e);

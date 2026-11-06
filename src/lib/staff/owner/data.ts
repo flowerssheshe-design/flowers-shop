@@ -263,3 +263,28 @@ export async function loadPayContext(
     (entries.data ?? []) as Parameters<typeof buildPayContext>[1],
   );
 }
+
+/**
+ * The weekly pay budget stays the same from week to week until an owner
+ * changes it: if this week has no budget yet, it gets the last week's amount
+ * (only the amount; the split starts empty). Never throws.
+ */
+export async function carryBudgetForward(admin: Admin, weekStart: string): Promise<void> {
+  try {
+    const { data: cur, error } = await admin.from("weekly_budgets").select("week_start").eq("week_start", weekStart).maybeSingle();
+    if (error || cur) return;
+    const { data: prev } = await admin
+      .from("weekly_budgets")
+      .select("amount")
+      .lt("week_start", weekStart)
+      .order("week_start", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!prev) return;
+    await admin
+      .from("weekly_budgets")
+      .upsert({ week_start: weekStart, amount: Number(prev.amount) || 0, updated_at: new Date().toISOString() }, { onConflict: "week_start", ignoreDuplicates: true });
+  } catch (e) {
+    console.error("carryBudgetForward:", e);
+  }
+}

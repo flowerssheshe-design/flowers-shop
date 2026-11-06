@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Bike, CheckCircle2, MapPin, MessageCircle, Navigation, Phone } from "lucide-react";
+import { Bike, CheckCircle2, MapPin, MessageCircle, Navigation, Phone, Store } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toaster";
 import { cn, formatILS } from "@/lib/utils";
@@ -25,6 +25,8 @@ type DeliveryOrder = {
   greeting_note: string | null;
   delivered_at: string | null;
   from_earlier_week?: boolean;
+  /** The stall the bouquets are picked up from (delivery point); null = no stall set. */
+  take_from?: { name: string; location: string | null } | null;
 };
 
 type DeliveriesData = {
@@ -103,6 +105,16 @@ function DeliveryCard({
           <span />
         )}
       </div>
+
+      {o.take_from && (
+        <p className="mt-3 flex items-start gap-2 rounded-md bg-primary/5 p-2 text-sm">
+          <Store className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+          <span>
+            לקחת מ<b>{o.take_from.name}</b>
+            {o.take_from.location ? ` (${o.take_from.location})` : ""}
+          </span>
+        </p>
+      )}
 
       {o.delivery_address && (
         <div className="mt-3 space-y-2">

@@ -81,8 +81,11 @@ function ReceiptRow({ line, onChanged }: { line: ReceiptLine; onChanged: () => v
       const body: Record<string, unknown> = { product_id: line.product_id };
       if (q !== got) body.received_qty = q;
       if (c !== price) body.unit_cost = c;
-      await api("/api/staff/supply/lines", { method: "PATCH", json: body });
-      toast({ title: `${line.title}: נשמר`, variant: "success" });
+      const res = await api<{ splitReset?: boolean }>("/api/staff/supply/lines", { method: "PATCH", json: body });
+      toast({
+        title: res.splitReset ? `${line.title}: נשמר. החלוקה בין הדוכנים בוטלה, והמנהל קיבל הודעה לחלק מחדש.` : `${line.title}: נשמר`,
+        variant: "success",
+      });
       onChanged();
     } catch (e) {
       toast({ title: e instanceof Error ? e.message : T.saveError, variant: "error" });
@@ -152,8 +155,8 @@ function AddExisting({ products, onChanged }: { products: { id: string; title: s
     }
     setBusy(true);
     try {
-      await api("/api/staff/supply/lines", { method: "PATCH", json: { product_id: pid, received_qty: q } });
-      toast({ title: "נוסף למלאי", variant: "success" });
+      const res = await api<{ splitReset?: boolean }>("/api/staff/supply/lines", { method: "PATCH", json: { product_id: pid, received_qty: q } });
+      toast({ title: res.splitReset ? "נוסף למלאי. החלוקה בין הדוכנים בוטלה, והמנהל קיבל הודעה לחלק מחדש." : "נוסף למלאי", variant: "success" });
       setOpen(false);
       setPid("");
       setQty("");

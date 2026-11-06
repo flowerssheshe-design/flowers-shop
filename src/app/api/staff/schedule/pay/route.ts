@@ -9,6 +9,8 @@ import { isBudgetShift, shiftHours } from "@/lib/staff/payroll";
 import { assignedForBudget, canReceiveBudget, checkAllocations, type BudgetCandidate } from "@/lib/staff/ops/budget";
 import { isoDate } from "@/lib/staff/ops/schemas";
 import { resolveWeek } from "@/lib/staff/ops/week-range";
+import { carryBudgetForward } from "@/lib/staff/owner/data";
+import { currentBusinessWeek } from "@/lib/staff/week";
 import { jsonError, notConfigured, parseBody, serverError } from "@/lib/staff/ops/http";
 
 export const runtime = "nodejs";
@@ -19,6 +21,8 @@ type EmployeeRow = BudgetCandidate & { full_name: string; deleted_at?: string | 
 
 async function loadWeek(weekStart: string) {
   const admin = createAdminClient();
+  // This week starts with last week's budget until an owner changes it.
+  if (weekStart === currentBusinessWeek(await getServerSettings()).weekStart) await carryBudgetForward(admin, weekStart);
   const [budgetRes, allocRes, empRes, shiftRes, weekRes, courierRes] = await Promise.all([
     admin.from("weekly_budgets").select("amount").eq("week_start", weekStart).maybeSingle(),
     admin.from("weekly_pay_allocations").select("employee_id, amount, note").eq("week_start", weekStart),

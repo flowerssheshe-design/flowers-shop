@@ -5,6 +5,7 @@ import { canManageTeam, hasRole, type StaffIdentity } from "@/lib/staff/access";
 import { addDays, currentBusinessWeek, israelWeekday } from "@/lib/staff/week";
 import { formatILS } from "@/lib/utils";
 import { loadPaymentsView } from "@/lib/staff/owner/payments-server";
+import { carryBudgetForward } from "@/lib/staff/owner/data";
 import { weekOrdersRange } from "@/lib/staff/work/ranges";
 import { loadStallSplit } from "./stall-split-server";
 import type { Task } from "./tasks";
@@ -27,6 +28,7 @@ export async function loadTasks(admin: Admin, who: StaffIdentity, now: Date = ne
   const ops = owner || hasRole(who, "ops_manager");
   const tasks: Task[] = [];
   const range = weekOrdersRange(week, settings);
+  await carryBudgetForward(admin, week.weekStart);
 
   const [bwRes, budgetRes, stallsRes, shiftsRes, courierRes, allocRes, pendingRes] = await Promise.all([
     admin.from("business_weeks").select("supplier_ordered_at, closed_at").eq("week_start", week.weekStart).maybeSingle(),
@@ -116,8 +118,17 @@ export async function loadTasks(admin: Admin, who: StaffIdentity, now: Date = ne
     // The bouquet split matters once the website sells from stock, until Thursday evening's lock.
     try {
       const split = await loadStallSplit(admin, { autoLock: false, now });
+      if (split.resetAt && !split.lockedAt) {
+        tasks.push({
+          id: "resplit-bouquets",
+          group: "ops",
+          title: "לחלק מחדש את הזרים בין הדוכנים",
+          detail: `${split.resetNote ?? "מה שהגיע מהספק השתנה."} החלוקה הקודמת בוטלה.`,
+          href: "/staff/stalls",
+        });
+      }
       const configured = split.mode === "count" ? split.plan.size > 0 : Object.values(split.percents).some((v) => Number(v) > 0);
-      if (!split.lockedAt && week.phase === "live" && !configured && split.stalls.length > 1) {
+      if (!split.lockedAt && !split.resetAt && week.phase === "live" && !configured && split.stalls.length > 1) {
         tasks.push({
           id: "split-bouquets",
           group: "ops",

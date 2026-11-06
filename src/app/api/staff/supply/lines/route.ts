@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireStaff } from "@/lib/staff/guard";
 import { jsonError, parseBody, workContext } from "@/lib/staff/work/server";
+import { resetSplitAfterDelivery } from "@/lib/staff/ops/stall-split-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -91,7 +92,17 @@ export async function PATCH(req: Request) {
         missing ? 409 : 500,
       );
     }
-    return NextResponse.json({ line: res.data[0], stockDelta });
+    // After the Thursday lock a different amount makes the stall split wrong: cancel it, tell the managers.
+    let splitReset = false;
+    if (stockDelta !== 0) {
+      const { data: prod } = await admin.from("products").select("title").eq("id", v.product_id).maybeSingle();
+      const title = String(prod?.title ?? "זר");
+      splitReset = await resetSplitAfterDelivery(
+        admin,
+        `מהספק הגיעו ${stockDelta > 0 ? `${stockDelta} יותר` : `${-stockDelta} פחות`} מ"${title}" ממה שהוזמן.`,
+      );
+    }
+    return NextResponse.json({ line: res.data[0], stockDelta, splitReset });
   } catch (e) {
     console.error("staff/supply/lines failed:", e);
     return jsonError("שגיאת שרת. נסו שוב.", 500);

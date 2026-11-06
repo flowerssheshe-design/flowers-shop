@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPaymentsView, exclusionKey } from "./payments";
+import { applyPayExclusions, buildPaymentsView, exclusionKey } from "./payments";
 import type { PayrollLine } from "./week-math";
 
 const line = (id: string, amount: number, extra: Partial<PayrollLine> = {}): PayrollLine => ({
@@ -80,5 +80,19 @@ describe("✓/✗ on a pay part", () => {
     expect(yael.due).toBe(150);
     expect(yael.parts.find((p) => p.key === "responsibility")?.excluded).toBe(true);
     expect(v.summary[0].owed).toBe(150);
+  });
+});
+
+describe("skipped parts are no cost", () => {
+  it("takes the ✗ parts out of the pay lines", () => {
+    const out = applyPayExclusions(
+      [line("yael", 300, { fromResponsibility: 100, fromEntries: 50 })],
+      "2026-11-01",
+      new Set([exclusionKey("2026-11-01", "yael", "responsibility"), exclusionKey("2026-11-01", "yael", "entry:e1")]),
+      [{ id: "e1", week_start: "2026-11-01", employee_id: "yael", description: "בונוס", amount: 50 }],
+    );
+    expect(out[0].amount).toBe(150);
+    expect(out[0].fromResponsibility).toBe(0);
+    expect(out[0].fromEntries).toBe(0);
   });
 });

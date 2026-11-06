@@ -1,6 +1,7 @@
 // Pure: the money overview ("כסף") and the expenses summary ("הוצאות").
 // No server imports, so everything here is unit-tested directly.
 
+import { applyPayExclusions } from "./payments";
 import { addDays, businessWeekOf, israelDate, type BusinessWeek, type WeekSettings } from "@/lib/staff/week";
 import { expensesForWeek, type ExpenseBucket, type WeeklyExpenseBreakdown } from "@/lib/expenses";
 import type { WeekBudget } from "@/lib/staff/payroll";
@@ -63,6 +64,8 @@ export type MoneyInput = {
   budgets?: Map<string, WeekBudget>;
   /** Pay history and one-off pay entries; passed to every payroll calculation. */
   ctx?: PayContext;
+  /** ✗ pay parts (payments page): not paid that week, so not a cost. */
+  exclusions?: Set<string>;
 };
 
 /** Newest first: the current week, then the weeks before it. */
@@ -125,6 +128,9 @@ export function buildMoneyReport(input: MoneyInput): MoneyWeek[] {
         );
       }
     }
+
+    // Parts marked ✗ on the payments page are not paid, so they are no cost at all.
+    payrollLines = applyPayExclusions(payrollLines, week.weekStart, input.exclusions, input.ctx?.entries ?? []);
 
     const finance = computeWeekFinance({
       weekStart: week.weekStart,
