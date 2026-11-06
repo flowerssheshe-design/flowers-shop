@@ -9,7 +9,7 @@ import { ROLE_LABELS, type StaffRole } from "@/lib/staff/access";
 import { T } from "@/lib/staff/labels";
 import { cn, formatILS } from "@/lib/utils";
 import { opsFetch } from "@/lib/staff/ops/client";
-import { ErrorBlock, LoadingBlock, useOpsData } from "./common";
+import { Collapsible, ErrorBlock, LoadingBlock, useOpsData } from "./common";
 
 type Person = {
   id: string;
@@ -17,6 +17,8 @@ type Person = {
   role: StaffRole;
   work_types: string[];
   is_active: boolean;
+  /** Staffed this week (stall shift or week courier). Only they can get money. */
+  assigned: boolean;
   shifts: number;
   hours: number;
   amount: number;
@@ -36,7 +38,7 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 
 /**
  * Weekly pay budget for stall sellers and the courier. Owners set the amount;
- * the shift manager splits it (himself included) and can't go over it.
+ * the shift manager splits it between the people staffed this week and can't go over it.
  */
 export function BudgetPanel({ week, meId }: { week: string; meId: string }) {
   const url = `/api/staff/schedule/pay?week=${week}`;
@@ -61,6 +63,7 @@ export function BudgetPanel({ week, meId }: { week: string; meId: string }) {
   const left = data.budget === null ? null : round2(data.budget - total);
   const over = left !== null && left < 0;
   const dirty = data.people.some((p) => (Number(amounts[p.id]) || 0) !== p.amount);
+  const unassignedWithMoney = data.people.filter((p) => !p.assigned && (Number(amounts[p.id]) || 0) > 0);
   const locked = data.closed;
 
   async function saveBudget() {
@@ -101,16 +104,20 @@ export function BudgetPanel({ week, meId }: { week: string; meId: string }) {
   }
 
   return (
-    <section className={cn("rounded-lg border bg-background p-4", loading && "opacity-60")}>
-      <div className="mb-3 flex items-start gap-2">
-        <Wallet className="mt-0.5 h-5 w-5 text-primary" aria-hidden="true" />
-        <div>
-          <h2 className="font-semibold">תקציב שכר לשבוע</h2>
-          <p className="text-xs text-muted-foreground">
-            למוכרי הדוכנים ולשליח. המנהלים קובעים את הסכום, ומנהל המשמרות מחלק אותו איך שהוא רוצה.
-          </p>
-        </div>
-      </div>
+    <Collapsible
+      id="week-budget"
+      title="תקציב שכר לשבוע"
+      summary={
+        data.budget === null
+          ? "עוד לא נקבע תקציב"
+          : `חולק ${formatILS(data.allocated)} מתוך ${formatILS(data.budget)}${locked ? " · השבוע נסגר" : ""}`
+      }
+      icon={<Wallet className="h-5 w-5 shrink-0 text-primary" aria-hidden="true" />}
+      className={cn(loading && "opacity-60")}
+    >
+      <p className="mb-3 text-xs text-muted-foreground">
+        רק למי ששובץ השבוע בדוכן או כשליח. המנהלים קובעים את הסכום, ומנהל המשמרות מחלק אותו. הסכום עובר לשבוע הבא כמו שהוא, עד שמשנים אותו.
+      </p>
 
       {/* Budget amount */}
       <div className="mb-4 grid gap-2 sm:grid-cols-3">
@@ -160,7 +167,7 @@ export function BudgetPanel({ week, meId }: { week: string; meId: string }) {
       {/* Split */}
       {data.people.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          אין עדיין מוכרי דוכן או שליחים. מוסיפים אותם בדף העובדים.
+          עוד לא שובצו עובדים לשבוע הזה. משבצים מוכרים בדוכנים ובוחרים שליח, והם יופיעו כאן.
         </p>
       ) : (
         <ul className="divide-y rounded-md border">
@@ -171,6 +178,7 @@ export function BudgetPanel({ week, meId }: { week: string; meId: string }) {
                   {p.full_name}
                   {p.id === meId && <span className="text-muted-foreground"> (אני)</span>}
                   {!p.is_active && <span className="text-xs text-muted-foreground"> · לא פעיל</span>}
+                  {!p.assigned && <span className="text-xs text-amber-700"> · לא משובץ השבוע</span>}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {p.role === "ops_manager" ? ROLE_LABELS.ops_manager + " · " : ""}
@@ -184,7 +192,7 @@ export function BudgetPanel({ week, meId }: { week: string; meId: string }) {
                   min={0}
                   value={amounts[p.id] ?? ""}
                   onChange={(e) => setAmounts((a) => ({ ...a, [p.id]: e.target.value }))}
-                  disabled={locked || data.budget === null}
+                  disabled={locked || data.budget === null || (!p.assigned && !(Number(amounts[p.id]) > 0))}
                   placeholder="0"
                   className="h-11 w-28 text-left tabular-nums"
                   dir="ltr"
@@ -201,14 +209,18 @@ export function BudgetPanel({ week, meId }: { week: string; meId: string }) {
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
           {over ? (
             <p className="text-sm text-destructive">חילקתם יותר מהתקציב. הורידו {formatILS(-left!)}.</p>
+          ) : unassignedWithMoney.length > 0 ? (
+            <p className="text-sm text-amber-700">
+              {unassignedWithMoney.map((p) => p.full_name).join(", ")} כבר לא משובצים. אפסו את הסכום לפני השמירה.
+            </p>
           ) : (
             <span />
           )}
-          <Button className="h-11" onClick={saveSplit} disabled={saving || over || !dirty}>
+          <Button className="h-11" onClick={saveSplit} disabled={saving || over || !dirty || unassignedWithMoney.length > 0}>
             {saving ? T.saving : "שמירת החלוקה"}
           </Button>
         </div>
       )}
-    </section>
+    </Collapsible>
   );
 }

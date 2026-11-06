@@ -137,6 +137,12 @@ export async function loadSupplierLines(
   weekStarts: string[],
 ): Promise<(SupplierLineRow & { week_start: string })[]> {
   if (weekStarts.length === 0) return [];
+  // With what really came and what was paid (migration 046).
+  const withReceipts = await admin
+    .from("supplier_order_lines")
+    .select("week_start, product_id, preorder_qty, extra_qty, final_qty, order_mode, received_qty, unit_cost")
+    .in("week_start", weekStarts);
+  if (!withReceipts.error) return (withReceipts.data ?? []) as (SupplierLineRow & { week_start: string })[];
   const withMode = await admin
     .from("supplier_order_lines")
     .select("week_start, product_id, preorder_qty, extra_qty, final_qty, order_mode")
@@ -256,4 +262,29 @@ export async function loadPayContext(
     (history.data ?? []) as Parameters<typeof buildPayContext>[0],
     (entries.data ?? []) as Parameters<typeof buildPayContext>[1],
   );
+}
+
+/**
+ * The weekly pay budget stays the same from week to week until an owner
+ * changes it: if this week has no budget yet, it gets the last week's amount
+ * (only the amount; the split starts empty). Never throws.
+ */
+export async function carryBudgetForward(admin: Admin, weekStart: string): Promise<void> {
+  try {
+    const { data: cur, error } = await admin.from("weekly_budgets").select("week_start").eq("week_start", weekStart).maybeSingle();
+    if (error || cur) return;
+    const { data: prev } = await admin
+      .from("weekly_budgets")
+      .select("amount")
+      .lt("week_start", weekStart)
+      .order("week_start", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!prev) return;
+    await admin
+      .from("weekly_budgets")
+      .upsert({ week_start: weekStart, amount: Number(prev.amount) || 0, updated_at: new Date().toISOString() }, { onConflict: "week_start", ignoreDuplicates: true });
+  } catch (e) {
+    console.error("carryBudgetForward:", e);
+  }
 }

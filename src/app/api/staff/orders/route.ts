@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isStallSaleOrder } from "@/lib/utils";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireStaff } from "@/lib/staff/guard";
 import { getServerSettings } from "@/lib/settings-server";
@@ -30,7 +31,10 @@ export async function GET(req: Request) {
       .limit(2000);
     if (error) return serverError(error, "orders GET");
 
-    const rows = (data ?? []) as unknown as Record<string, unknown>[];
+    // Stall sales are not customer orders: they show on the stall screen and in the money pages.
+    const rows = ((data ?? []) as unknown as Record<string, unknown>[]).filter(
+      (r) => !(r.order_type === "stall" || isStallSaleOrder(r as { notes?: string | null; customer_name?: string | null })),
+    );
     const approverIds = Array.from(new Set(rows.map((r) => r.approved_by).filter(Boolean).map(String)));
     const names = new Map<string, string>();
     if (approverIds.length) {

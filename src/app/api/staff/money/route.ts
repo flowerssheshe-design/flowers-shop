@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { exclusionKey } from "@/lib/staff/owner/payments";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireStaff } from "@/lib/staff/guard";
 import { getServerSettings } from "@/lib/settings-server";
@@ -8,6 +9,7 @@ import { weekWindow } from "@/lib/staff/owner/week-math";
 import { buildMoneyOverview, moneyWeekList, weeksSince } from "@/lib/staff/owner/money";
 import {
   loadBudgets,
+  carryBudgetForward,
   loadBusinessWeeks,
   loadEmployees,
   loadExpenses,
@@ -43,6 +45,7 @@ export async function GET(req: Request) {
     const admin = createAdminClient();
     const settings = await getServerSettings();
     const current = currentBusinessWeek(settings, now);
+    await carryBudgetForward(admin, current.weekStart);
 
     // The business started with its first order.
     const firstRes = await admin.from("orders").select("created_at").order("created_at", { ascending: true }).limit(1);
@@ -73,6 +76,13 @@ export async function GET(req: Request) {
       loadBudgets(admin, starts),
       loadPayContext(admin),
     ]);
+    // ✗ pay parts from the payments page (migration 047; none before it).
+    const exRes = await admin.from("payroll_exclusions").select("week_start, employee_id, part").in("week_start", starts);
+    const exclusions = new Set(
+      ((exRes.error ? [] : exRes.data ?? []) as { week_start: string; employee_id: string; part: string }[]).map((x) =>
+        exclusionKey(String(x.week_start).slice(0, 10), String(x.employee_id), String(x.part)),
+      ),
+    );
 
     const overview = buildMoneyOverview({
       current,
@@ -91,6 +101,7 @@ export async function GET(req: Request) {
       supplierLines,
       budgets,
       ctx,
+      exclusions,
     });
     // The per-employee pay lines live on the payroll page; keep the response small.
     const strip = <T extends { payrollLines: unknown }>(w: T) => ({ ...w, payrollLines: [] });

@@ -28,6 +28,7 @@ export function primaryRole(roles: string[]): StaffRole {
 
 export type SectionKey =
   | "dashboard"
+  | "tasks"
   | "orders"
   | "schedule"
   | "stalls"
@@ -116,6 +117,7 @@ export const GROUP_ORDER: SectionGroup[] = [
 // Order inside each topic follows this list.
 export const SECTIONS: Section[] = [
   { key: "dashboard", href: "/staff", label: "השבוע עכשיו", group: "overview", icon: "LayoutDashboard", allow: isOwner },
+  { key: "tasks", href: "/staff/tasks", label: "משימות", group: "overview", icon: "ListChecks", allow: isOwnerOrOps },
 
   { key: "stall", href: "/staff/stall", label: "מכירה בדוכן", group: "stall", icon: "ShoppingBasket", allow: hasWork("stall_seller") },
   { key: "stalls", href: "/staff/stalls", label: "ניהול דוכנים ושיבוץ", group: "stall", icon: "Store", allow: isOwnerOrOps },
@@ -126,7 +128,7 @@ export const SECTIONS: Section[] = [
   { key: "supplier", href: "/staff/supplier", label: "הזמנה מהספק", group: "orders", icon: "Truck", allow: isOwner },
 
   // Opened from the name at the bottom of the menu, not listed in it.
-  { key: "me", href: "/staff/me", label: "האזור שלי", group: "team", icon: "UserRound", allow: () => true, inMenu: () => false },
+  { key: "me", href: "/staff/me", label: "האזור האישי", group: "team", icon: "UserRound", allow: () => true, inMenu: () => false },
   // The shift manager staffs Friday from "ניהול דוכנים"; the full weekly grid is for owners.
   { key: "schedule", href: "/staff/schedule", label: "לוח משמרות שבועי", group: "team", icon: "CalendarDays", allow: isOwnerOrOps, inMenu: isOwner },
   { key: "team", href: "/staff/team", label: "עובדים", group: "team", icon: "UserCog", allow: isOwnerOrOps },
@@ -170,7 +172,7 @@ export function menuSections(who: StaffIdentity): Section[] {
 export function homeHref(who: StaffIdentity): string {
   const preferred: Record<StaffRole, SectionKey[]> = {
     owner: ["dashboard"],
-    ops_manager: ["orders", "schedule"],
+    ops_manager: ["tasks", "orders", "schedule"],
     marketing: ["marketing"],
     // A worker lands on their own tool, then "my area".
     worker: ["stall", "deliveries", "supply", "me"],

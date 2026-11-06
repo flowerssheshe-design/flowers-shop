@@ -3,7 +3,7 @@
 
 export const W = {
   // my area
-  myArea: "האזור שלי",
+  myArea: "האזור האישי",
   myAreaDesc: "המשמרות שלך, השעות וכמה הרווחת",
   myShifts: "המשמרות שלי",
   thisWeekShifts: "השבוע",
@@ -25,7 +25,7 @@ export const W = {
   stallTitle: "דוכן",
   stallDesc: "מכירה, מלאי וציוד של הדוכן",
   chooseStall: "בחירת דוכן",
-  noStallToday: "אין לך משמרת בדוכן היום. אם זו טעות, פנו למנהל המשמרות.",
+  noStallToday: "לא שובצת לדוכן השבוע. אם זו טעות, פנו למנהל המשמרות.",
   noActiveStalls: "אין דוכנים פעילים. אפשר להוסיף דוכן במסך הדוכנים.",
   sell: "מכירה",
   stockLive: "מלאי בדוכן",

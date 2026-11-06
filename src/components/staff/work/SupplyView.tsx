@@ -10,6 +10,7 @@ import { W } from "@/lib/staff/work/labels";
 import { api, useStaffData } from "@/lib/staff/work/client";
 import { validateDistribution, type DistributionProduct } from "@/lib/staff/work/distribution";
 import { QtyStepper } from "./QtyStepper";
+import { SupplyReceipts, type ReceiptLine } from "./SupplyReceipts";
 import { Card, EmptyBlock, ErrorBlock, LoadingBlock, NoticeBlock, RefreshButton } from "./common";
 
 type SupplyData = {
@@ -21,14 +22,14 @@ type SupplyData = {
   canDistribute?: boolean;
   week: { start: string; end: string; phase: string };
   source: "supplier" | "forecast";
-  lines: { product_id: string; title: string; qty: number; picked_up: boolean }[];
+  lines: (ReceiptLine & { picked_up: boolean })[];
   products: { id: string; title: string; image_url: string | null; stock: number | null }[];
   stalls: { id: string; name: string; location: string | null }[];
   scheduled: Record<string, { name: string; start_time: string; end_time: string }[]>;
   distributedToday: Record<string, Record<string, number>>;
 };
 
-type Tab = "pickup" | "distribute";
+type Tab = "pickup" | "receipts" | "distribute";
 
 function forecastKey(weekStart: string) {
   return `staff.supply.forecast-picked.${weekStart}`;
@@ -375,10 +376,11 @@ export function SupplyView() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
-        <div className="grid flex-1 grid-cols-2 gap-1 rounded-lg bg-muted p-1" role="tablist">
+        <div className="grid flex-1 grid-cols-3 gap-1 rounded-lg bg-muted p-1" role="tablist">
           {(
             [
               ["pickup", W.pickupList],
+              ["receipts", "מה הגיע"],
               ["distribute", W.distribution],
             ] as [Tab, string][]
           ).map(([key, label]) => (
@@ -401,6 +403,13 @@ export function SupplyView() {
 
       {tab === "pickup" ? (
         <PickupList data={data} onChanged={() => void reload(true)} />
+      ) : tab === "receipts" ? (
+        <SupplyReceipts
+          lines={data.lines}
+          products={data.products}
+          isForecast={data.source === "forecast"}
+          onChanged={() => void reload(true)}
+        />
       ) : data.canDistribute ? (
         <Distribution data={data} onSaved={() => void reload(true)} />
       ) : (

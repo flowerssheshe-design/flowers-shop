@@ -247,3 +247,77 @@ export function useOpsData<R>(url: string | null, fetcher: (url: string) => Prom
   useStaffRefresh(load);
   return { data, setData, error, loading, reload: load };
 }
+
+/**
+ * A big section that stays a single button until it is opened, so long pages
+ * stay short. The open/closed state is remembered per section in this browser.
+ */
+export function Collapsible({
+  id,
+  title,
+  summary,
+  icon,
+  defaultOpen = false,
+  className,
+  children,
+}: {
+  /** Key for remembering open/closed. */
+  id: string;
+  title: React.ReactNode;
+  /** One short line shown next to the title, also when closed. */
+  summary?: React.ReactNode;
+  icon?: React.ReactNode;
+  defaultOpen?: boolean;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  const storageKey = `staff-section:${id}`;
+  const [open, setOpen] = React.useState(defaultOpen);
+  React.useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(storageKey);
+      if (saved === "1" || saved === "0") setOpen(saved === "1");
+    } catch {
+      // storage blocked: keep the default
+    }
+  }, [storageKey]);
+
+  function toggle() {
+    setOpen((o) => {
+      try {
+        window.localStorage.setItem(storageKey, o ? "0" : "1");
+      } catch {
+        // ignore
+      }
+      return !o;
+    });
+  }
+
+  const contentId = `${storageKey}-content`;
+  return (
+    <section className={cn("rounded-lg border bg-background", className)}>
+      <button
+        type="button"
+        onClick={toggle}
+        aria-expanded={open}
+        aria-controls={contentId}
+        className="flex min-h-14 w-full items-center gap-2 rounded-lg p-4 text-start hover:bg-accent/40"
+      >
+        {icon}
+        <span className="min-w-0 flex-1">
+          <span className="block font-semibold">{title}</span>
+          {summary && <span className="block text-xs text-muted-foreground">{summary}</span>}
+        </span>
+        <ChevronLeft
+          className={cn("h-5 w-5 shrink-0 text-muted-foreground transition-transform", open && "-rotate-90")}
+          aria-hidden="true"
+        />
+      </button>
+      {open && (
+        <div id={contentId} className="px-4 pb-4">
+          {children}
+        </div>
+      )}
+    </section>
+  );
+}

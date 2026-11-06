@@ -12,6 +12,9 @@ import { getStoreMode, isRealtimeMode } from "@/lib/storeMode";
 import { autoMarkSupplierOrderIfDue } from "@/lib/staff/owner/supplier-server";
 import { orderTypeForMode } from "@/lib/staff/owner/store-mode";
 import { TRACKING_COOKIE, resolveTrackingLinkId } from "@/lib/staff/owner/tracking";
+import { loadStallSplit, takeOrderStock, type StallSplitState } from "@/lib/staff/ops/stall-split-server";
+import { deliveryStallFor, shortItem } from "@/lib/staff/ops/stall-split";
+import { israelWeekday } from "@/lib/staff/week";
 import type { Order } from "@/types";
 
 function readCookie(name: string): string | undefined {
@@ -26,7 +29,7 @@ function readCookie(name: string): string | undefined {
 function isMissingStaffColumn(error: unknown): boolean {
   const e = error as { message?: string; details?: string } | null;
   const text = `${e?.message ?? ""} ${e?.details ?? ""}`;
-  return /order_type|tracking_link_id/.test(text);
+  return /order_type|tracking_link_id|pickup_stall_id/.test(text);
 }
 
 export const runtime = "nodejs";
@@ -59,6 +62,8 @@ const BodySchema = z.object({
   fulfillment_type: z.enum(["delivery", "pickup"]).optional(),
   payment_method: z.enum(["bit", "paybox", "cash"]).optional(),
   greeting_note: z.string().max(1000).nullish(),
+  /** The stall the customer picks the order up from (when stalls are pickup points). */
+  pickup_stall_id: z.string().uuid().nullish(),
 });
 
 export async function POST(req: Request) {
@@ -110,7 +115,8 @@ export async function POST(req: Request) {
     const ids = Array.from(new Set(body.items.map((it) => it.productId)));
     const { data, error } = await admin
       .from("products")
-      .select("id, title, price_standard, image_url, is_active")
+      // "*" so show_on_site (migration 046) is read when it exists.
+      .select("*")
       .in("id", ids);
     if (error) {
       console.error("Order products lookup error:", error);
@@ -119,8 +125,8 @@ export async function POST(req: Request) {
         { status: 500 },
       );
     }
-    products = ((data ?? []) as (PricingProduct & { is_active: boolean })[])
-      .filter((p) => p.is_active);
+    products = ((data ?? []) as (PricingProduct & { is_active: boolean; show_on_site?: boolean })[])
+      .filter((p) => p.is_active && p.show_on_site !== false);
   } catch (e) {
     console.error(e);
     return NextResponse.json(
@@ -140,6 +146,17 @@ export async function POST(req: Request) {
   }
 
   const settings = await getServerSettings();
+
+  // The owner can turn off same-day pickup / delivery on Friday itself.
+  if (israelWeekday() === 5) {
+    if (body.delivery_type === "delivery" && !settings.friday_delivery) {
+      return NextResponse.json({ error: "היום (שישי) אין משלוחים. אפשר לבחור איסוף עצמי." }, { status: 400 });
+    }
+    if (body.delivery_type === "pickup" && !settings.friday_pickup) {
+      return NextResponse.json({ error: "היום (שישי) אין איסוף עצמי מהאתר. אפשר לבחור משלוח." }, { status: 400 });
+    }
+  }
+
   const deliveryFee =
     body.delivery_type === "delivery" ? Number(settings.delivery_fee) || 0 : 0;
 
@@ -165,6 +182,63 @@ export async function POST(req: Request) {
   const storeMode = await getStoreMode();
   const isRealtime = isRealtimeMode(storeMode);
   const orderType = orderTypeForMode(storeMode);
+
+  // Pickup point and per-stall stock. If the split can't be loaded (e.g. the DB
+  // isn't migrated yet), fall back to one general pickup address and the general stock.
+  let split: StallSplitState | null = null;
+  try {
+    split = await loadStallSplit(createAdminClient());
+  } catch (e) {
+    console.error("Order stall split load failed (falling back to general stock):", e);
+  }
+  if (split?.noOrders) {
+    return NextResponse.json({ error: "כל הדוכנים סגורים כרגע, ולכן אי אפשר להזמין עכשיו." }, { status: 409 });
+  }
+  const configuredPickup = (split?.stalls ?? []).filter((s) => s.is_pickup_point);
+  const pickupPoints = configuredPickup.filter((s) => !split?.closedForOrders.has(s.id));
+  let pickupStallId: string | null = null;
+  if (body.delivery_type === "pickup" && configuredPickup.length > 0) {
+    if (pickupPoints.length === 0) {
+      return NextResponse.json({ error: "כרגע אין דוכן פתוח לאיסוף. אפשר לבחור משלוח." }, { status: 409 });
+    }
+    const chosen = pickupPoints.find((s) => s.id === body.pickup_stall_id);
+    if (!chosen) {
+      return NextResponse.json({ error: "בחרו מאיזה דוכן לאסוף את ההזמנה" }, { status: 400 });
+    }
+    pickupStallId = chosen.id;
+  }
+  // Delivery: the courier takes the bouquets from a delivery-point stall (if any).
+  let deliveryStallId: string | null = null;
+  if (body.delivery_type === "delivery" && split) {
+    const d = deliveryStallFor(split.stalls, split.split, priced.items, split.closedForOrders);
+    if (d === null) {
+      // Pre-orders aren't limited by stock: just take the first delivery point.
+      if (isRealtime) {
+        return NextResponse.json({ error: "אחד הזרים אזל למשלוחים. אפשר לבחור איסוף עצמי או להוריד את הכמות." }, { status: 409 });
+      }
+      deliveryStallId = split.stalls.find((s) => s.is_delivery_point && !split!.closedForOrders.has(s.id))?.id ?? null;
+    } else if (d) {
+      deliveryStallId = d;
+    }
+  }
+  // The stall the bouquets come from (pickup there, or the courier takes them from there).
+  const sourceStallId = pickupStallId ?? deliveryStallId;
+
+  if (isRealtime && split && !deliveryStallId) {
+    const where = body.delivery_type === "delivery" ? "delivery" : pickupStallId ?? "general";
+    const short = shortItem(split.split, priced.items, where);
+    if (short) {
+      const stallName = pickupStallId ? pickupPoints.find((s) => s.id === pickupStallId)?.name : null;
+      return NextResponse.json(
+        {
+          error: stallName
+            ? `"${short.title}" אזל ב${stallName}. אפשר לבחור דוכן אחר או להוריד את הכמות.`
+            : `המוצר "${short.title}" אזל מהמלאי`,
+        },
+        { status: 409 },
+      );
+    }
+  }
 
   // Marketing attribution: only an existing, active tracking link is stored.
   let trackingLinkId: string | null = null;
@@ -199,9 +273,17 @@ export async function POST(req: Request) {
     };
     let { data, error } = await admin
       .from("orders")
-      .insert({ ...baseRow, order_type: orderType, tracking_link_id: trackingLinkId })
+      .insert({ ...baseRow, order_type: orderType, tracking_link_id: trackingLinkId, pickup_stall_id: sourceStallId })
       .select("*")
       .single();
+    if (error && /pickup_stall_id/.test(`${error.message ?? ""} ${error.details ?? ""}`)) {
+      // Before migration 043: no pickup stall column yet.
+      ({ data, error } = await admin
+        .from("orders")
+        .insert({ ...baseRow, order_type: orderType, tracking_link_id: trackingLinkId })
+        .select("*")
+        .single());
+    }
     if (error && isMissingStaffColumn(error)) {
       // DB not migrated yet: still take the order.
       ({ data, error } = await admin.from("orders").insert(baseRow).select("*").single());
@@ -232,31 +314,17 @@ export async function POST(req: Request) {
 
   if (shouldDeductAtCreation) {
     const admin = createAdminClient();
-    const deductedItems: { productId: string; qty: number }[] = [];
-    for (const item of priced.items) {
-      const { data: after, error: decErr } = await admin.rpc("decrement_inventory", {
-        p_product_id: item.productId,
-        p_qty: item.qty,
-      });
-      if (decErr || after === null || after === undefined) {
-        for (const di of deductedItems) {
-          await admin.rpc("increment_inventory", {
-            p_product_id: di.productId,
-            p_qty: di.qty,
-          });
-        }
-        await admin.from("orders").delete().eq("id", orderData.id);
-        return NextResponse.json(
-          { error: `המוצר "${item.title}" אזל מהמלאי` },
-          { status: 409 },
-        );
-      }
-      deductedItems.push({ productId: item.productId, qty: item.qty });
+    const taken = await takeOrderStock(admin, priced.items, sourceStallId);
+    if (!taken.ok) {
+      await admin.from("orders").delete().eq("id", orderData.id);
+      return NextResponse.json(
+        { error: `המוצר "${taken.title}" אזל מהמלאי` },
+        { status: 409 },
+      );
     }
-    await admin
-      .from("orders")
-      .update({ inventory_deducted: true })
-      .eq("id", orderData.id);
+    const flags: Record<string, boolean> = { inventory_deducted: true };
+    if (taken.stallDeducted) flags.stall_stock_deducted = true;
+    await admin.from("orders").update(flags).eq("id", orderData.id);
     orderData.inventory_deducted = true;
   }
 

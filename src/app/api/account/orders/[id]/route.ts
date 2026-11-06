@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SUPABASE_CONFIGURED } from "@/lib/constants";
+import { returnOrderStock } from "@/lib/staff/ops/stall-split-server";
 import type { CartItem } from "@/types";
 
 export const runtime = "nodejs";
@@ -22,14 +23,12 @@ const EDITABLE_STATUSES: string[] = ["pending_payment", "approved"];
 
 async function restoreStockForOrder(
   items: { productId: string; qty: number }[],
+  order: { pickup_stall_id?: string | null; stall_stock_deducted?: boolean | null },
 ) {
-  const admin = createAdminClient();
-  for (const item of items ?? []) {
-    await admin.rpc("increment_inventory", {
-      p_product_id: item.productId,
-      p_qty: item.qty,
-    });
-  }
+  await returnOrderStock(createAdminClient(), items ?? [], {
+    pickupStallId: order.pickup_stall_id ?? null,
+    stallDeducted: order.stall_stock_deducted === true,
+  });
 }
 
 export async function PATCH(
@@ -64,7 +63,7 @@ export async function PATCH(
   try {
     const { data: existing, error: fetchErr } = await supabase
       .from("orders")
-      .select("status, items, inventory_deducted")
+      .select("*")
       .eq("id", id)
       .eq("user_id", user.id)
       .single();
@@ -88,7 +87,7 @@ export async function PATCH(
     const shouldRestore = isCancelling && existing.inventory_deducted === true;
 
     if (shouldRestore && existingItems.length > 0) {
-      await restoreStockForOrder(existingItems);
+      await restoreStockForOrder(existingItems, existing);
     }
 
     const updatePayload: Record<string, unknown> = { ...parsed.data };
@@ -146,7 +145,7 @@ export async function DELETE(
   try {
     const { data: existing, error: fetchErr } = await supabase
       .from("orders")
-      .select("status, items, inventory_deducted")
+      .select("*")
       .eq("id", id)
       .eq("user_id", user.id)
       .single();
@@ -167,7 +166,7 @@ export async function DELETE(
 
     const existingItems = (existing.items ?? []) as CartItem[];
     if (existing.inventory_deducted === true && existingItems.length > 0) {
-      await restoreStockForOrder(existingItems);
+      await restoreStockForOrder(existingItems, existing);
     }
 
     const { error } = await createAdminClient()

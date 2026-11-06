@@ -15,6 +15,8 @@ export type Product = {
   image_url: string | null;
   image_urls: string[];
   is_active: boolean;
+  /** Shown on the website (false: stalls only, until a manager turns it on). Missing = shown. */
+  show_on_site?: boolean;
   is_available?: boolean;
   sort_order: number;
   created_at: string;

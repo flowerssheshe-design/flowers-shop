@@ -35,3 +35,29 @@ export async function POST(_req: Request, ctx: { params: { id: string } }) {
     return jsonError("שגיאת שרת. נסו שוב.", 500);
   }
 }
+
+/** Undo "נמסר ללקוח" (pressed by mistake): the order is waiting at the stall again. */
+export async function DELETE(_req: Request, ctx: { params: { id: string } }) {
+  const guard = await requireStaff("stall");
+  if (!guard.ok) return guard.response;
+  const id = ctx.params.id;
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return jsonError("ההזמנה לא נמצאה", 404);
+
+  try {
+    const { admin } = await workContext();
+    const { data, error } = await admin
+      .from("orders")
+      .update({ status: "approved" })
+      .eq("id", id)
+      .eq("status", "completed")
+      .eq("delivery_type", "pickup")
+      .neq("order_type", "stall")
+      .select("id");
+    if (error) return jsonError("העדכון נכשל. נסו שוב.", 500);
+    if (!data || data.length === 0) return jsonError("ההזמנה לא מסומנת כנמסרה", 409);
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    console.error("staff/stall/pickup undo failed:", e);
+    return jsonError("שגיאת שרת. נסו שוב.", 500);
+  }
+}

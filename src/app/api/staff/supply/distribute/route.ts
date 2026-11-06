@@ -50,6 +50,12 @@ export async function POST(req: Request) {
   const me = guard.session.employee;
   // The manager decides the distribution; pickup workers only see it.
   if (!canDecideDistribution(me)) return jsonError(DISTRIBUTION_FORBIDDEN, 403);
+  // Since migration 043 the stalls get their stock when the split is locked
+  // (Thursday evening, or "נעילה" on the stock page). Moving stock here as
+  // well would take it off the general stock twice.
+  if (req.method === "POST") {
+    return jsonError("החלוקה לדוכנים נקבעת עכשיו בדף המלאי וננעלת ביום חמישי בערב.", 410);
+  }
 
   const body = await parseBody(req, Body);
   if (!body.ok) return body.response;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canReceiveBudget, checkAllocations, type BudgetCandidate } from "./budget";
+import { assignedForBudget, canReceiveBudget, checkAllocations, type BudgetCandidate } from "./budget";
 import { checkOpsEmployeeInput, isOpsManageable } from "./team";
 import { allocatedTotal, unallocated } from "@/lib/staff/payroll";
 import { budgetRemainderLine, computePayroll } from "@/lib/staff/owner/week-math";
@@ -61,9 +61,9 @@ describe("weekly budget split", () => {
 });
 
 describe("shift manager and employees", () => {
-  it("may manage only stall sellers and couriers", () => {
+  it("may manage stall sellers, couriers and supply runners", () => {
     expect(isOpsManageable({ role: "worker", work_types: ["stall_seller", "courier"] })).toBe(true);
-    expect(isOpsManageable({ role: "worker", work_types: ["stall_seller", "supply_runner"] })).toBe(false);
+    expect(isOpsManageable({ role: "worker", work_types: ["stall_seller", "supply_runner"] })).toBe(true);
     expect(isOpsManageable({ role: "ops_manager", work_types: [] })).toBe(false);
     expect(isOpsManageable({ role: "worker", work_types: [] })).toBe(false);
   });
@@ -71,7 +71,9 @@ describe("shift manager and employees", () => {
   it("may not set roles, other work types or pay", () => {
     expect(checkOpsEmployeeInput({ role: "worker", work_types: ["courier"] })).toBeNull();
     expect(checkOpsEmployeeInput({ role: "owner" })).not.toBeNull();
-    expect(checkOpsEmployeeInput({ work_types: ["supply_runner"] })).not.toBeNull();
+    expect(checkOpsEmployeeInput({ work_types: ["supply_runner"] })).toBeNull();
+    expect(checkOpsEmployeeInput({ work_types: ["supply_runner"], pay_type: "per_shift", pay_rate: 100 })).toBeNull();
+    expect(checkOpsEmployeeInput({ work_types: ["stall_seller"], pay_type: "per_shift", pay_rate: 100 })).not.toBeNull();
     expect(checkOpsEmployeeInput({ work_types: [] })).not.toBeNull();
     expect(checkOpsEmployeeInput({ pay_type: "hourly", pay_rate: 40 })).not.toBeNull();
     expect(checkOpsEmployeeInput({ pay_type: null, pay_rate: null })).toBeNull();
@@ -93,5 +95,25 @@ describe("multiple responsibilities", () => {
     expect(canWorkShift(m, "stall")).toBe(true);
     expect(canWorkShift(m, "courier")).toBe(false);
     expect(canReceiveBudget(m)).toBe(true);
+  });
+});
+
+describe("budget goes only to staffed people", () => {
+  it("counts stall/courier shifts and the week courier as staffed", () => {
+    const set = assignedForBudget({
+      shifts: [
+        { employee_id: "seller", shift_type: "stall" },
+        { employee_id: "runner", shift_type: "supply" },
+      ],
+      courierId: "courier",
+    });
+    expect(Array.from(set).sort()).toEqual(["courier", "seller"]);
+  });
+
+  it("refuses money for someone not staffed this week, but allows zero", () => {
+    const staffed = new Set(["seller"]);
+    expect(checkAllocations(500, [{ employee_id: "seller", amount: 100 }], byId, staffed).ok).toBe(true);
+    expect(checkAllocations(500, [{ employee_id: "ops", amount: 100 }], byId, staffed).ok).toBe(false);
+    expect(checkAllocations(500, [{ employee_id: "ops", amount: 0 }], byId, staffed).ok).toBe(true);
   });
 });

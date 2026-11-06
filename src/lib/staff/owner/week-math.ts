@@ -75,6 +75,10 @@ export type SupplierLineRow = {
   extra_qty: number;
   final_qty: number;
   order_mode?: string | null;
+  /** How many really came (set by the supply runner); null = as ordered. */
+  received_qty?: number | null;
+  /** What was really paid per bouquet; null = the product's cost price. */
+  unit_cost?: number | string | null;
 };
 
 export type PayrollSnapshotRow = {
@@ -410,7 +414,13 @@ export function computeWeekFinance(input: WeekFinanceInput): WeekFinance {
 
   const ordered = Boolean(input.supplierOrdered) && (input.supplierLines?.length ?? 0) > 0;
   const supplierCost = ordered
-    ? (input.supplierLines ?? []).reduce((s, l) => s + num(l.final_qty) * (costById.get(l.product_id) ?? 0), 0)
+    ? (input.supplierLines ?? []).reduce(
+        (s, l) =>
+          s +
+          num(l.received_qty ?? l.final_qty) *
+            (l.unit_cost === null || l.unit_cost === undefined ? costById.get(l.product_id) ?? 0 : num(l.unit_cost)),
+        0,
+      )
     : soldCost;
 
   const expenses = expensesForWeek(input.expenses, input.weekStart, addDays(input.weekStart, 7));
@@ -493,6 +503,8 @@ export type DashboardInput = {
   supplierLines: SupplierLineRow[];
   supplierOrderedAt: string | null;
   budget?: WeekBudget;
+  /** Takes out pay parts marked ✗ on the payments page (they are no cost). */
+  adjustPayroll?: (lines: PayrollLine[]) => PayrollLine[];
   /** Pay history and one-off payments (loadPayContext). Without it, pay uses the employee columns. */
   payContext?: PayContext;
 };
@@ -528,8 +540,9 @@ export function buildDashboard(input: DashboardInput): DashboardData {
   const deliveries = deliveriesByEmployee(input.orders, win);
 
   const ws = input.week.weekStart;
-  const scheduled = computePayroll(input.employees, weekShifts, deliveries, undefined, input.budget, input.payContext, ws);
-  const soFarLines = computePayroll(input.employees, weekShifts, deliveries, today, input.budget, input.payContext, ws);
+  const adjust = input.adjustPayroll ?? ((l: PayrollLine[]) => l);
+  const scheduled = adjust(computePayroll(input.employees, weekShifts, deliveries, undefined, input.budget, input.payContext, ws));
+  const soFarLines = adjust(computePayroll(input.employees, weekShifts, deliveries, today, input.budget, input.payContext, ws));
   // Lines without an employee (budget remainder, one-off payments) count in full in "so far".
   const soFarById = new Map(soFarLines.filter((l) => l.employee_id).map((l) => [l.employee_id, l.amount]));
   const payrollSoFar = sumPayroll(soFarLines);

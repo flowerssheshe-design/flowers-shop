@@ -6,9 +6,11 @@ import { canManageTeam } from "@/lib/staff/access";
 import { getServerSettings } from "@/lib/settings-server";
 import { addDays } from "@/lib/staff/week";
 import { isBudgetShift, shiftHours } from "@/lib/staff/payroll";
-import { canReceiveBudget, checkAllocations, type BudgetCandidate } from "@/lib/staff/ops/budget";
+import { assignedForBudget, canReceiveBudget, checkAllocations, type BudgetCandidate } from "@/lib/staff/ops/budget";
 import { isoDate } from "@/lib/staff/ops/schemas";
 import { resolveWeek } from "@/lib/staff/ops/week-range";
+import { carryBudgetForward } from "@/lib/staff/owner/data";
+import { currentBusinessWeek } from "@/lib/staff/week";
 import { jsonError, notConfigured, parseBody, serverError } from "@/lib/staff/ops/http";
 
 export const runtime = "nodejs";
@@ -19,7 +21,9 @@ type EmployeeRow = BudgetCandidate & { full_name: string; deleted_at?: string | 
 
 async function loadWeek(weekStart: string) {
   const admin = createAdminClient();
-  const [budgetRes, allocRes, empRes, shiftRes, weekRes] = await Promise.all([
+  // This week starts with last week's budget until an owner changes it.
+  if (weekStart === currentBusinessWeek(await getServerSettings()).weekStart) await carryBudgetForward(admin, weekStart);
+  const [budgetRes, allocRes, empRes, shiftRes, weekRes, courierRes] = await Promise.all([
     admin.from("weekly_budgets").select("amount").eq("week_start", weekStart).maybeSingle(),
     admin.from("weekly_pay_allocations").select("employee_id, amount, note").eq("week_start", weekStart),
     admin.from("employees").select("id, full_name, role, work_types, is_active, deleted_at"),
@@ -29,9 +33,17 @@ async function loadWeek(weekStart: string) {
       .gte("work_date", weekStart)
       .lte("work_date", addDays(weekStart, 6)),
     admin.from("business_weeks").select("closed_at").eq("week_start", weekStart).maybeSingle(),
+    admin
+      .from("week_assignments")
+      .select("employee_id")
+      .eq("week_start", weekStart)
+      .eq("assignment", "courier")
+      .maybeSingle(),
   ]);
-  const err = budgetRes.error ?? allocRes.error ?? empRes.error ?? shiftRes.error ?? weekRes.error;
+  const err = budgetRes.error ?? allocRes.error ?? empRes.error ?? shiftRes.error ?? weekRes.error ?? courierRes.error;
   if (err) throw err;
+  const shifts = (shiftRes.data ?? []) as { employee_id: string; start_time: string; end_time: string; shift_type: string }[];
+  const courierId = (courierRes.data as { employee_id?: string | null } | null)?.employee_id ?? null;
   return {
     admin,
     budget: budgetRes.data ? Number((budgetRes.data as { amount: number | string }).amount) : null,
@@ -40,7 +52,8 @@ async function loadWeek(weekStart: string) {
       ...e,
       work_types: Array.isArray(e.work_types) ? e.work_types : [],
     })),
-    shifts: (shiftRes.data ?? []) as { employee_id: string; start_time: string; end_time: string; shift_type: string }[],
+    shifts,
+    assigned: assignedForBudget({ shifts, courierId: courierId ? String(courierId) : null }),
     closed: Boolean((weekRes.data as { closed_at?: string | null } | null)?.closed_at),
   };
 }
@@ -60,7 +73,9 @@ export async function GET(req: Request) {
 
     const people = w.employees
       // Deleted employees are gone from the split (their old allocation is dropped on the next save).
-      .filter((e) => !e.deleted_at && (canReceiveBudget(e) || allocated.has(e.id)))
+      // Only people staffed this week (stall shift or week courier); anyone who
+      // already has money but is no longer staffed stays listed so it can be zeroed.
+      .filter((e) => !e.deleted_at && ((canReceiveBudget(e) && w.assigned.has(e.id)) || allocated.has(e.id)))
       .map((e) => {
         const mine = w.shifts.filter((s) => s.employee_id === e.id && isBudgetShift(s.shift_type));
         const a = allocated.get(e.id);
@@ -70,6 +85,7 @@ export async function GET(req: Request) {
           role: e.role,
           work_types: e.work_types,
           is_active: e.is_active,
+          assigned: w.assigned.has(e.id),
           shifts: mine.length,
           hours: Math.round(mine.reduce((sum, s) => sum + shiftHours(s), 0) * 100) / 100,
           amount: a ? Number(a.amount) : 0,
@@ -160,7 +176,7 @@ export async function POST(req: Request) {
     if (w.closed) return jsonError("השבוע הזה כבר נסגר", 409);
 
     const rows = body.data.allocations.filter((a) => a.amount > 0);
-    const check = checkAllocations(w.budget, rows, new Map(w.employees.map((e) => [e.id, e])));
+    const check = checkAllocations(w.budget, rows, new Map(w.employees.map((e) => [e.id, e])), w.assigned);
     if (!check.ok) return jsonError(check.error, 400);
 
     const me = guard.session.employee.id;

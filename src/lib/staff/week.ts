@@ -73,6 +73,11 @@ export function israelTimeToDate(isoDate: string, minutes: number): Date {
   return new Date(guess.getTime() - (shownAsUtc - guess.getTime()));
 }
 
+/** Israel day of the week of an instant: 0 = Sunday … 5 = Friday, 6 = Saturday. */
+export function israelWeekday(at: Date = new Date()): number {
+  return localParts(at).dow;
+}
+
 /** Israel calendar date of an instant, "YYYY-MM-DD". */
 export function israelDate(at: Date = new Date()): string {
   const p = localParts(at);

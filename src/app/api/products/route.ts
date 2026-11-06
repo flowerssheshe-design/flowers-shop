@@ -24,7 +24,7 @@ if (error) {
         { status: 500 },
       );
     }
-    return NextResponse.json({ products: (data as Product[]) ?? [] });
+    return NextResponse.json({ products: ((data as Product[]) ?? []).filter((p) => p.show_on_site !== false) });
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: "שגיאת שרת" }, { status: 500 });

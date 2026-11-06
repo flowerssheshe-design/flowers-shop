@@ -17,10 +17,10 @@ describe("staff menu topics", () => {
     expect(homeHref(owner)).toBe("/staff");
   });
 
-  it("the shift manager gets stalls, orders, team and stock, and lands on orders", () => {
+  it("the shift manager gets tasks, stalls, orders, team and stock, and lands on tasks", () => {
     const ops: StaffIdentity = { role: "ops_manager", work_types: [] };
-    expect(topicsOf(ops)).toEqual(["stall", "orders", "team", "products"]);
-    expect(homeHref(ops)).toBe("/staff/orders");
+    expect(topicsOf(ops)).toEqual(["overview", "stall", "orders", "team", "products"]);
+    expect(homeHref(ops)).toBe("/staff/tasks");
   });
 
   it("a stall seller sees only selling and their own area, and lands on the stall", () => {

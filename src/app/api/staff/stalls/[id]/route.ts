@@ -9,7 +9,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const STALL_COLUMNS = "id, name, location, is_active, is_open, sort_order";
+// "*" so the page keeps working if a newer column's migration wasn't run yet.
+const STALL_COLUMNS = "*";
 
 /** Edit a stall or flip "open now". */
 export async function PATCH(req: Request, ctx: { params: { id: string } }) {

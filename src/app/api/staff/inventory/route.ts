@@ -9,6 +9,7 @@ import { normalizeItems } from "@/lib/staff/ops/orders";
 import { InventoryUpdateSchema } from "@/lib/staff/ops/schemas";
 import { jsonError, notConfigured, parseBody, serverError } from "@/lib/staff/ops/http";
 import type { InventoryRow } from "@/lib/staff/ops/types";
+import { loadStallSplit } from "@/lib/staff/ops/stall-split-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,12 +54,23 @@ export async function GET() {
     for (const o of ordersRes.data ?? []) {
       for (const it of normalizeItems(o.items)) reserved.set(it.productId, (reserved.get(it.productId) ?? 0) + it.qty);
     }
+    // Per stall: what it sells + the pickup orders waiting there (see the split on the stalls page).
     const stallStock = new Map<string, Record<string, number>>();
-    for (const r of stallInvRes.data ?? []) {
-      const pid = String(r.product_id);
-      const rec = stallStock.get(pid) ?? {};
-      rec[String(r.stall_id)] = Number(r.stock) || 0;
-      stallStock.set(pid, rec);
+    try {
+      const split = await loadStallSplit(admin);
+      for (const [pid, p] of Array.from(split.split.entries())) {
+        const rec: Record<string, number> = {};
+        for (const st of split.stalls) rec[st.id] = (p.stallFree[st.id] ?? 0) + (p.pickups[st.id] ?? 0);
+        stallStock.set(pid, rec);
+      }
+    } catch (e) {
+      console.error("inventory GET split:", e);
+      for (const r of stallInvRes.data ?? []) {
+        const pid = String(r.product_id);
+        const rec = stallStock.get(pid) ?? {};
+        rec[String(r.stall_id)] = Number(r.stock) || 0;
+        stallStock.set(pid, rec);
+      }
     }
 
     const rows: InventoryRow[] = (productsRes.data ?? [])

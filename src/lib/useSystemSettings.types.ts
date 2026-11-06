@@ -27,6 +27,10 @@
   stall_hours?: string;
   /** "YYYY-MM-DD": the money, expenses and pay pages count only from this date. "" = from the start. */
   money_start_date?: string;
+  /** Customers can order delivery on Friday itself. */
+  friday_delivery?: boolean;
+  /** Customers can order pickup on Friday itself. */
+  friday_pickup?: boolean;
 };
 
 export const DEFAULTS: Required<SystemSettings> = {
@@ -55,4 +59,6 @@ export const DEFAULTS: Required<SystemSettings> = {
   stall_bit_qr_url: "",
   stall_hours: "שישי 08:00-14:00",
   money_start_date: "",
+  friday_delivery: true,
+  friday_pickup: true,
 };

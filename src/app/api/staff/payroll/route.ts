@@ -16,6 +16,7 @@ import {
 } from "@/lib/staff/owner/pay-summary";
 import {
   isMissingTableError,
+  carryBudgetForward,
   loadAllBudgets,
   loadAllPayrollWeeks,
   loadBusinessWeeks,
@@ -25,6 +26,7 @@ import {
 } from "@/lib/staff/owner/data";
 import { notConfigured, serverError } from "@/lib/staff/owner/api";
 import { loadPayrollEmployees } from "./shared";
+import { buildPaymentsView, exclusionKey, type PaymentRow } from "@/lib/staff/owner/payments";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,8 +48,9 @@ export async function GET() {
     const admin = createAdminClient();
     const settings = await getServerSettings();
     const week = currentBusinessWeek(settings, now);
+    await carryBudgetForward(admin, week.weekStart);
 
-    const [people, payEmployees, ctx, entriesRes, shifts, snapshots, budgets, bw] = await Promise.all([
+    const [people, payEmployees, ctx, entriesRes, shifts, snapshots, budgets, bw, paymentsRes, exclusionsRes] = await Promise.all([
       loadPayrollEmployees(admin),
       loadEmployees(admin),
       loadPayContext(admin),
@@ -61,7 +64,19 @@ export async function GET() {
       loadAllPayrollWeeks(admin),
       loadAllBudgets(admin),
       loadBusinessWeeks(admin, [week.weekStart]),
+      admin
+        .from("payroll_payments")
+        .select("id, week_start, employee_id, amount, note, paid_at")
+        .order("paid_at", { ascending: false })
+        .limit(5000),
+      // ✗ marks (migration 047); missing table = nothing skipped.
+      admin.from("payroll_exclusions").select("week_start, employee_id, part").limit(5000),
     ]);
+    const exclusions = new Set(
+      ((exclusionsRes.error ? [] : exclusionsRes.data ?? []) as { week_start: string; employee_id: string; part: string }[]).map((x) =>
+        exclusionKey(String(x.week_start).slice(0, 10), String(x.employee_id), String(x.part)),
+      ),
+    );
     if (entriesRes.error && !isMissingTableError(entriesRes.error)) return serverError("payroll entries", entriesRes.error);
     const ready = !entriesRes.error;
 
@@ -125,18 +140,48 @@ export async function GET() {
     // not change pay (couriers are paid from the budget), so they are not loaded.
     const budget = budgets.get(week.weekStart);
     const currentLines = computePayroll(payEmployees, shifts, new Map(), israelDate(now), budget, ctx, week.weekStart);
+    const linesByWeek = payLinesByWeek({
+      currentWeekStart: week.weekStart,
+      currentLines,
+      snapshots,
+      ctx,
+      budgets,
+      employees: payEmployees,
+    });
     const summary = buildPaySummary({
       currentWeekStart: week.weekStart,
       startWeek: moneyStartWeek(settings),
-      linesByWeek: payLinesByWeek({
-        currentWeekStart: week.weekStart,
-        currentLines,
-        snapshots,
-        ctx,
-        budgets,
-        employees: payEmployees,
-      }),
+      linesByWeek,
     });
+
+    // Before migration 046 there is no payments table: the screen says so.
+    const payments = paymentsRes.error
+      ? null
+      : buildPaymentsView({
+          currentWeekStart: week.weekStart,
+          linesByWeek,
+          entries: entries.map((e) => ({
+            id: e.id,
+            week_start: e.week_start,
+            employee_id: e.employee_id,
+            description: e.description,
+            amount: e.amount,
+          })),
+          payments: ((paymentsRes.data ?? []) as Record<string, unknown>[]).map(
+            (p): PaymentRow => ({
+              id: String(p.id),
+              week_start: String(p.week_start).slice(0, 10),
+              employee_id: String(p.employee_id),
+              amount: Number(p.amount) || 0,
+              note: (p.note as string | null) ?? null,
+              paid_at: String(p.paid_at),
+            }),
+          ),
+          names,
+          exclusions,
+          now,
+          startWeek: moneyStartWeek(settings),
+        });
 
     const body: PayrollResponse = {
       ready,
@@ -149,6 +194,7 @@ export async function GET() {
       employees,
       entries,
       summary,
+      payments,
     };
     return NextResponse.json(body);
   } catch (e) {

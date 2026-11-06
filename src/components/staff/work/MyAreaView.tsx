@@ -11,6 +11,7 @@ import { W } from "@/lib/staff/work/labels";
 import { api, formatDate, useStaffData } from "@/lib/staff/work/client";
 import { checkPinChangeInput } from "@/lib/staff/work/pin-change";
 import { Card, EmptyBlock, ErrorBlock, LoadingBlock, Stat } from "./common";
+import { RequestsCard } from "./RequestsCard";
 
 type ShiftView = {
   id: string;
@@ -40,6 +41,8 @@ type Summary = {
   week: { start: string; end: string };
   pay: { pay_type: string | null; pay_rate: number | null; responsibility_pay?: number | null } | null;
   earnings: { week: EarningsView; month: EarningsView } | null;
+  /** Money really paid to me this calendar month. Null before migration 046. */
+  paidThisMonth?: { total: number; payments: { id: string; week_start: string; amount: number; paid_at: string }[] } | null;
   hours: { week: number; month: number };
   shifts: { thisWeek: ShiftView[]; nextWeek: ShiftView[] };
 };
@@ -92,22 +95,6 @@ function ShiftList({ shifts, today }: { shifts: ShiftView[]; today: string }) {
   );
 }
 
-function EarningsCard({ title, e, showDeliveries }: { title: string; e: EarningsView; showDeliveries: boolean }) {
-  return (
-    <div className="rounded-lg border bg-background p-3">
-      <p className="text-sm font-medium text-muted-foreground">{title}</p>
-      <p className="mt-1 text-2xl font-bold tabular-nums">{formatILS(e.amount)}</p>
-      <p className="mt-1 text-xs text-muted-foreground">
-        {hoursText(e.hours)} {W.hours} · {e.shifts} {W.shiftsCount}
-        {showDeliveries && ` · ${e.deliveries} ${W.deliveriesCount}`}
-      </p>
-      {e.fromEntries ? (
-        <p className="mt-1 text-xs text-muted-foreground">כולל תשלום חד-פעמי של {formatILS(e.fromEntries)}</p>
-      ) : null}
-    </div>
-  );
-}
-
 export function MyAreaView() {
   const { data, error, loading, reload } = useStaffData<Summary>("/api/staff/me/summary");
 
@@ -115,8 +102,6 @@ export function MyAreaView() {
   if (error && !data) return <ErrorBlock text={error} onRetry={() => void reload()} />;
   if (!data) return null;
 
-  const pay = data.pay;
-  const showDeliveries = pay?.pay_type === "per_delivery" || (data.earnings?.month.deliveries ?? 0) > 0;
 
   return (
     <div className="space-y-4">
@@ -129,29 +114,30 @@ export function MyAreaView() {
           <p className="mt-2 text-xs text-muted-foreground">{W.ownerNoPay}</p>
         </Card>
       ) : (
-        <Card title={W.earnings}>
-          {data.earnings && (
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <EarningsCard title={W.earnedWeek} e={data.earnings.week} showDeliveries={showDeliveries} />
-              <EarningsCard title={W.earnedMonth} e={data.earnings.month} showDeliveries={showDeliveries} />
-            </div>
+        // Only money that was really paid, from the 1st of this month to its end.
+        <Card title="שולם לי החודש">
+          {data.paidThisMonth === null || data.paidThisMonth === undefined ? (
+            <p className="text-sm text-muted-foreground">עוד אין כאן נתונים.</p>
+          ) : (
+            <>
+              <p className="text-3xl font-bold tabular-nums">{formatILS(data.paidThisMonth.total)}</p>
+              {data.paidThisMonth.payments.length === 0 ? (
+                <p className="mt-1 text-sm text-muted-foreground">עוד לא שולם לך החודש.</p>
+              ) : (
+                <ul className="mt-3 divide-y text-sm">
+                  {data.paidThisMonth.payments.map((p) => (
+                    <li key={p.id} className="flex justify-between gap-2 py-2">
+                      <span>
+                        {new Date(p.paid_at).toLocaleDateString("he-IL", { timeZone: "Asia/Jerusalem", day: "numeric", month: "numeric" })}
+                        <span className="text-xs text-muted-foreground"> · על השבוע של {formatDate(p.week_start)}</span>
+                      </span>
+                      <span className="font-medium tabular-nums">{formatILS(p.amount)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
           )}
-          <div className="mt-3 space-y-1 text-sm">
-            <p className="text-muted-foreground">
-              על עבודה בדוכן ובמשלוחים מנהל המשמרות קובע כמה תקבל השבוע.
-              {data.earnings && data.earnings.week.fromBudget === 0 && " השבוע עוד לא נקבע."}
-            </p>
-            {pay?.pay_type && pay.pay_type !== "per_delivery" && pay.pay_rate !== null && (
-              <p>
-                {W.myRate} לאיסוף מהספק: <strong>{formatILS(pay.pay_rate)}</strong> {T.payType[pay.pay_type] ?? ""}
-              </p>
-            )}
-            {pay?.responsibility_pay ? (
-              <p>
-                על האחריות: <strong>{formatILS(pay.responsibility_pay)}</strong> לשבוע
-              </p>
-            ) : null}
-          </div>
         </Card>
       )}
 
@@ -169,6 +155,8 @@ export function MyAreaView() {
       <Card title={W.nextWeekShifts}>
         <ShiftList shifts={data.shifts.nextWeek} today={data.today} />
       </Card>
+
+      <RequestsCard />
 
       <PinChangeCard />
     </div>

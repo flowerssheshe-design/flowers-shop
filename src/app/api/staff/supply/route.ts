@@ -5,6 +5,7 @@ import { canDecideDistribution, totalsByStall } from "@/lib/staff/work/distribut
 import { weekOrdersRange } from "@/lib/staff/work/ranges";
 import { addDays } from "@/lib/staff/week";
 import { jsonError, workContext } from "@/lib/staff/work/server";
+import { loadStallSplit } from "@/lib/staff/ops/stall-split-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,11 +30,12 @@ export async function GET() {
     const [linesRes, productsRes, invRes, stallsRes, shiftsRes, distRes] = await Promise.all([
       admin
         .from("supplier_order_lines")
-        .select("product_id, final_qty, picked_up")
+        // "*" so received_qty / unit_cost (migration 046) come along when they exist.
+        .select("*")
         .eq("week_start", week.weekStart),
       admin
         .from("products")
-        .select("id, title, image_url, sort_order, is_active")
+        .select("id, title, image_url, sort_order, is_active, cost_price")
         .order("sort_order", { ascending: true }),
       admin.from("inventory").select("product_id, live_stock_count"),
       admin
@@ -47,8 +49,8 @@ export async function GET() {
         .eq("work_date", friday)
         .eq("shift_type", "stall")
         .order("start_time", { ascending: true }),
-      // What each stall gets on Friday = its stall stock (split on the stock page).
-      admin.from("stall_inventory").select("stall_id, product_id, stock").gt("stock", 0),
+      // After the Thursday-evening lock: what each stall got (pickup orders included).
+      admin.from("stall_inventory").select("stall_id, product_id, initial_stock").gt("initial_stock", 0),
     ]);
     const firstError = [linesRes, productsRes, invRes, stallsRes, shiftsRes, distRes].find((r) => r.error);
     if (firstError) {
@@ -58,16 +60,29 @@ export async function GET() {
 
     const allProducts = productsRes.data ?? [];
     const titles = new Map(allProducts.map((p) => [String(p.id), String(p.title)]));
+    const costs = new Map(allProducts.map((p) => [String(p.id), Number(p.cost_price) || 0]));
     const stockBy = new Map((invRes.data ?? []).map((r) => [String(r.product_id), Number(r.live_stock_count) || 0]));
 
     let source: "supplier" | "forecast" = "supplier";
-    let lines = (linesRes.data ?? [])
-      .filter((l) => Number(l.final_qty) > 0)
+    type LineRow = { product_id: string; final_qty: number; picked_up?: boolean; received_qty?: number | null; unit_cost?: number | null };
+    let lines: {
+      product_id: string;
+      title: string;
+      qty: number;
+      picked_up: boolean;
+      received_qty?: number | null;
+      unit_cost?: number | null;
+      cost_price?: number;
+    }[] = ((linesRes.data ?? []) as LineRow[])
+      .filter((l) => Number(l.final_qty) > 0 || (l.received_qty ?? 0) > 0)
       .map((l) => ({
         product_id: String(l.product_id),
         title: titles.get(String(l.product_id)) ?? "",
         qty: Number(l.final_qty) || 0,
         picked_up: l.picked_up === true,
+        received_qty: l.received_qty ?? null,
+        unit_cost: l.unit_cost === null || l.unit_cost === undefined ? null : Number(l.unit_cost),
+        cost_price: costs.get(String(l.product_id)) ?? 0,
       }))
       .sort((a, b) => a.title.localeCompare(b.title, "he"));
 
@@ -81,6 +96,27 @@ export async function GET() {
         .lt("created_at", range.to);
       if (error) return jsonError("לא הצלחנו לחשב את הצפי מההזמנות", 500);
       lines = preorderTotals(preorders ?? [], titles).map((l) => ({ ...l, picked_up: false }));
+    }
+
+    let rowsForStalls: { stall_id: string; product_id: string; qty: number }[] = [];
+    try {
+      const split = await loadStallSplit(admin);
+      if (split.lockedAt) {
+        rowsForStalls = (distRes.data ?? []).map((d) => ({
+          stall_id: String(d.stall_id),
+          product_id: String(d.product_id),
+          qty: Number(d.initial_stock) || 0,
+        }));
+      } else {
+        for (const [pid, p] of Array.from(split.split.entries())) {
+          for (const st of split.stalls) {
+            const qty = (p.stallFree[st.id] ?? 0) + (p.pickups[st.id] ?? 0);
+            if (qty > 0) rowsForStalls.push({ stall_id: st.id, product_id: pid, qty });
+          }
+        }
+      }
+    } catch (e) {
+      console.error("staff/supply split:", e);
     }
 
     const scheduled: Record<string, { name: string; start_time: string; end_time: string }[]> = {};
@@ -118,13 +154,8 @@ export async function GET() {
         })),
       stalls: (stallsRes.data ?? []).map((s) => ({ id: String(s.id), name: String(s.name), location: s.location ?? null })),
       scheduled,
-      distributedToday: totalsByStall(
-        (distRes.data ?? []).map((d) => ({
-          stall_id: String(d.stall_id),
-          product_id: String(d.product_id),
-          qty: Number(d.stock) || 0,
-        })),
-      ),
+      // What each stall gets on Friday: the bouquets it sells + the pickup orders waiting there.
+      distributedToday: totalsByStall(rowsForStalls),
     });
   } catch (e) {
     console.error("staff/supply GET failed:", e);

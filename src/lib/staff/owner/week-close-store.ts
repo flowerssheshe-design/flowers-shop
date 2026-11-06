@@ -5,6 +5,7 @@ import { addDays } from "@/lib/staff/week";
 import {
   ensureBusinessWeek,
   loadBudgets,
+  carryBudgetForward,
   loadEmployees,
   loadExpenses,
   loadOrders,
@@ -76,6 +77,8 @@ export function supabaseWeekCloseStore(admin: Admin): WeekCloseStore {
     },
 
     async loadWeekData(weekStart, window) {
+      // A week nobody changed the budget of closes with the previous week's budget.
+      await carryBudgetForward(admin, weekStart);
       const [orders, products, expenses, employees, shifts, lines, bw, budgets, payContext] = await Promise.all([
         loadOrders(admin, window.from, window.to),
         loadProducts(admin),

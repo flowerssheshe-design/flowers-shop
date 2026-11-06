@@ -11,13 +11,15 @@ import { W } from "@/lib/staff/work/labels";
 import { api, formatTime, useStaffData } from "@/lib/staff/work/client";
 import { BitPayModal } from "./BitPayModal";
 import { ChecklistCard } from "./ChecklistCard";
+import { NewPickupAlert } from "./NewPickupAlert";
 import { PickupOrders } from "./PickupOrders";
 import { SaleDialog } from "./SaleDialog";
 import { WriteOffDialog } from "./WriteOffDialog";
 import { Card, EmptyBlock, ErrorBlock, LoadingBlock, NoticeBlock, RefreshButton, Stat } from "./common";
 import type { StallData, StallProduct, StallSale } from "./stall-types";
 
-const POLL_MS = 20_000;
+// Often enough that a new pickup order pops up within seconds.
+const POLL_MS = 10_000;
 const STALL_KEY = "staff.stall.selected";
 type Tab = "sell" | "pickup" | "equipment";
 
@@ -113,9 +115,11 @@ export function StallView({ meId }: { meId: string }) {
   const summary = data.summary ?? { count: 0, total: 0, bit: 0, cash: 0, other: 0, units: 0 };
   const sales = data.sales ?? [];
   const pickups = data.pickupOrders ?? [];
+  const waitingPickups = pickups.filter((o) => o.status !== "completed").length;
 
   return (
     <div className="space-y-4">
+      <NewPickupAlert stallId={stall.id} orders={pickups} />
       {/* Stall picker + Bit */}
       <div className="flex flex-wrap items-center gap-2">
         {data.stalls.length > 1 ? (
@@ -173,7 +177,7 @@ export function StallView({ meId }: { meId: string }) {
         {(
           [
             ["sell", W.sell],
-            ["pickup", `${W.pickupOrders}${pickups.length ? ` (${pickups.length})` : ""}`],
+            ["pickup", `${W.pickupOrders}${waitingPickups ? ` (${waitingPickups})` : ""}`],
             ["equipment", "ציוד ופחת"],
           ] as [Tab, string][]
         ).map(([key, label]) => (
@@ -213,21 +217,27 @@ export function StallView({ meId }: { meId: string }) {
               </Button>
             }
           >
+            {data.canSell === false && (
+              <p className="mb-3 rounded-md border border-amber-300 bg-amber-50 p-2 text-sm text-amber-900">
+                המכירה בדוכן נפתחת ביום שישי בבוקר. עד אז אפשר לראות את המלאי ואת ההזמנות לאיסוף.
+              </p>
+            )}
             {products.length === 0 ? (
               <EmptyBlock text="אין זרים פעילים" />
             ) : (
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {products.map((p) => {
                   const out = p.stock <= 0;
+                  const closed = data.canSell === false;
                   return (
                     <button
                       key={p.id}
                       type="button"
                       onClick={() => setSelling(p)}
-                      disabled={out}
+                      disabled={out || closed}
                       className={cn(
                         "flex min-h-[96px] flex-col justify-between rounded-lg border p-3 text-start transition",
-                        out ? "cursor-not-allowed bg-muted/50 opacity-60" : "bg-background hover:border-primary active:bg-primary/5",
+                        out || closed ? "cursor-not-allowed bg-muted/50 opacity-60" : "bg-background hover:border-primary active:bg-primary/5",
                       )}
                     >
                       <span className="line-clamp-2 text-sm font-semibold">{p.title}</span>

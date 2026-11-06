@@ -114,7 +114,7 @@ export function ProductsView() {
               <li key={p.id} className={cn("rounded-xl border bg-card p-4 shadow-sm", !p.is_active && "opacity-60")}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="truncate font-medium">{p.title}</div>
+                    <div className="truncate font-medium">{p.title}{p.show_on_site === false && <span className="ms-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-normal text-amber-900">לא באתר</span>}</div>
                     <div className="text-sm text-muted-foreground">
                       {formatILS(p.price_standard)} · לקוח קבוע {formatILS(calculateMemberPrice(p.price_standard, memberPercent))}
                     </div>
@@ -149,7 +149,7 @@ export function ProductsView() {
               <tbody>
                 {products.map((p, i) => (
                   <tr key={p.id} className={cn("border-t", !p.is_active && "text-muted-foreground")}>
-                    <td className="p-3 font-medium">{p.title}</td>
+                    <td className="p-3 font-medium">{p.title}{p.show_on_site === false && <span className="ms-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-normal text-amber-900">לא באתר</span>}</td>
                     <td className="p-3 tabular-nums">{formatILS(p.price_standard)}</td>
                     <td className="p-3 tabular-nums">{formatILS(calculateMemberPrice(p.price_standard, memberPercent))}</td>
                     <td className="p-3 tabular-nums">{formatILS(p.cost_price)}</td>
