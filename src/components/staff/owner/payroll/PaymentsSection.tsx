@@ -29,13 +29,15 @@ export function PaymentsSection({ data, onChanged }: { data: PayrollResponse; on
     );
   }
 
+  // The summary counts only money that was really paid ("שולם").
+  const paidRows = view.summary.filter((r) => r.paidAll > 0);
   const week = view.weeks.find((w) => w.weekStart === weekStart) ?? view.weeks.find((w) => w.left > 0) ?? view.weeks[0] ?? null;
 
   return (
     <div className="space-y-4">
       {/* Summary */}
       <Card title="סיכום תשלומים">
-        {view.summary.length === 0 ? (
+        {paidRows.length === 0 ? (
           <EmptyState title="עוד לא נרשמו תשלומים" />
         ) : (
           <div className="overflow-x-auto">
@@ -45,23 +47,20 @@ export function PaymentsSection({ data, onChanged }: { data: PayrollResponse; on
                   <th className="p-2 font-medium">עובד</th>
                   <th className="p-2 font-medium">שולם ב-30 יום</th>
                   <th className="p-2 font-medium">שולם מאז ומעולם</th>
-                  <th className="p-2 font-medium">עוד צריך לשלם</th>
                 </tr>
               </thead>
               <tbody>
-                {view.summary.map((r) => (
+                {paidRows.map((r) => (
                   <tr key={r.employee_id} className="border-b last:border-0">
                     <td className="p-2 font-medium">{r.full_name}</td>
                     <td className="p-2 tabular-nums">{formatILS(r.paidLast30)}</td>
                     <td className="p-2 tabular-nums">{formatILS(r.paidAll)}</td>
-                    <td className={cn("p-2 tabular-nums", r.owed > 0 && "font-semibold text-amber-700")}>{formatILS(r.owed)}</td>
                   </tr>
                 ))}
                 <tr className="border-t-2 font-bold">
                   <td className="p-2">סך הכל</td>
                   <td className="p-2 tabular-nums">{formatILS(view.totals.paidLast30)}</td>
                   <td className="p-2 tabular-nums">{formatILS(view.totals.paidAll)}</td>
-                  <td className="p-2 tabular-nums">{formatILS(view.totals.owed)}</td>
                 </tr>
               </tbody>
             </table>
