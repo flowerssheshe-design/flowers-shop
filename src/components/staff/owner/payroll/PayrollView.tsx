@@ -8,13 +8,14 @@ import { P } from "./labels";
 import { RatesSection } from "./RatesSection";
 import { EntriesSection } from "./EntriesSection";
 import { SummarySection } from "./SummarySection";
+import { PaymentsSection } from "./PaymentsSection";
 
-type Tab = "rates" | "entries" | "summary";
+type Tab = "payments" | "rates" | "entries" | "summary";
 
 /** The pay page (/staff/payroll), owners only. */
 export function PayrollView() {
   const { data, error, loading, reload } = useStaffJson<PayrollResponse>("/api/staff/payroll");
-  const [tab, setTab] = React.useState<Tab>("rates");
+  const [tab, setTab] = React.useState<Tab>("payments");
 
   return (
     <div className="space-y-4">
@@ -26,6 +27,7 @@ export function PayrollView() {
 
       <Tabs<Tab>
         tabs={[
+          { key: "payments", label: "תשלומים" },
           { key: "rates", label: P.tabRates },
           { key: "entries", label: P.tabEntries },
           { key: "summary", label: P.tabSummary },
@@ -45,7 +47,9 @@ export function PayrollView() {
       ) : error && !data ? (
         <ErrorState message={error} onRetry={() => void reload()} />
       ) : data ? (
-        tab === "rates" ? (
+        tab === "payments" ? (
+          <PaymentsSection data={data} onChanged={() => void reload()} />
+        ) : tab === "rates" ? (
           <RatesSection data={data} onChanged={() => void reload()} />
         ) : tab === "entries" ? (
           <EntriesSection data={data} onChanged={() => void reload()} />

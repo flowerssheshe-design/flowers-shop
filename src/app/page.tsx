@@ -20,7 +20,8 @@ async function loadProducts(): Promise<Product[]> {
       console.error("Failed to load products:", error.message);
       return [];
     }
-    return (data as Product[]) ?? [];
+    // Bouquets made by the supply runner stay off the website until a manager turns them on.
+    return ((data as Product[]) ?? []).filter((p) => p.show_on_site !== false);
   } catch (e) {
     console.error(e);
     return [];

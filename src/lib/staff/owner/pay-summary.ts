@@ -5,6 +5,7 @@
 import { addDays } from "@/lib/staff/week";
 import type { PayType, WeekBudget } from "@/lib/staff/payroll";
 import type { PayContext, PayRate } from "@/lib/staff/pay-context";
+import type { PaymentsView } from "./payments";
 import {
   BUDGET_REMAINDER_ROLE,
   PAY_ENTRY_ROLE,
@@ -85,6 +86,8 @@ export type PayrollResponse = {
   employees: PayrollEmployeeView[];
   entries: PayrollEntryView[];
   summary: PaySummary;
+  /** "שולם": what is due per week and what was really paid (null before migration 046). */
+  payments: PaymentsView | null;
 };
 
 // ---------- Summary ----------

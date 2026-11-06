@@ -75,6 +75,10 @@ export type SupplierLineRow = {
   extra_qty: number;
   final_qty: number;
   order_mode?: string | null;
+  /** How many really came (set by the supply runner); null = as ordered. */
+  received_qty?: number | null;
+  /** What was really paid per bouquet; null = the product's cost price. */
+  unit_cost?: number | string | null;
 };
 
 export type PayrollSnapshotRow = {
@@ -410,7 +414,13 @@ export function computeWeekFinance(input: WeekFinanceInput): WeekFinance {
 
   const ordered = Boolean(input.supplierOrdered) && (input.supplierLines?.length ?? 0) > 0;
   const supplierCost = ordered
-    ? (input.supplierLines ?? []).reduce((s, l) => s + num(l.final_qty) * (costById.get(l.product_id) ?? 0), 0)
+    ? (input.supplierLines ?? []).reduce(
+        (s, l) =>
+          s +
+          num(l.received_qty ?? l.final_qty) *
+            (l.unit_cost === null || l.unit_cost === undefined ? costById.get(l.product_id) ?? 0 : num(l.unit_cost)),
+        0,
+      )
     : soldCost;
 
   const expenses = expensesForWeek(input.expenses, input.weekStart, addDays(input.weekStart, 7));

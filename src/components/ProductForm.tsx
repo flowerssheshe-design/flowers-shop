@@ -57,6 +57,7 @@ export function ProductForm({
   const [imageUrlInput, setImageUrlInput] = useState("");
   const [previewIndex, setPreviewIndex] = useState(0);
   const [isActive, setIsActive] = useState(initial?.is_active ?? true);
+  const [showOnSite, setShowOnSite] = useState(initial?.show_on_site ?? true);
   const [sortOrder, setSortOrder] = useState(
     initial?.sort_order ?? nextSortOrder,
   );
@@ -158,6 +159,7 @@ export function ProductForm({
         image_url: imageUrls[0] ?? null,
         image_urls: imageUrls,
         is_active: isActive,
+        show_on_site: showOnSite,
         sort_order: Number(sortOrder),
       };
 
@@ -391,6 +393,14 @@ export function ProductForm({
                />
              </div>
            </div>
+
+        <div className="flex items-center justify-between rounded-md border p-3">
+          <Label htmlFor="on-site">
+            מופיע באתר
+            <span className="block text-xs font-normal text-muted-foreground">כבוי: נמכר רק בדוכנים, לא באתר.</span>
+          </Label>
+          <Switch id="on-site" checked={showOnSite} onCheckedChange={setShowOnSite} />
+        </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div className="flex items-center justify-between rounded-md border p-3">

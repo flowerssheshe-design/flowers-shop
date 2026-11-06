@@ -47,6 +47,7 @@ const ProductSchema = z.object({
   image_url: ImageUrlSchema.nullish(),
   image_urls: ImageUrlsSchema.optional(),
   is_active: z.boolean(),
+  show_on_site: z.boolean().optional(),
   sort_order: z.number().int().min(0).max(10000),
 });
 
@@ -80,11 +81,13 @@ export async function POST(req: Request) {
 
   try {
     const supabase = createAdminClient();
-    const { data, error } = await supabase
-      .from("products")
-      .insert({ ...parsed.data, ...normalizeImages(parsed.data) })
-      .select("*")
-      .single();
+    const row: Record<string, unknown> = { ...parsed.data, ...normalizeImages(parsed.data) };
+    let { data, error } = await supabase.from("products").insert(row).select("*").single();
+    if (error && /show_on_site/.test(error.message ?? "")) {
+      // Before migration 046: no show_on_site column yet.
+      delete row.show_on_site;
+      ({ data, error } = await supabase.from("products").insert(row).select("*").single());
+    }
     if (error || !data) {
       return NextResponse.json(
         { error: "יצירת המוצר נכשלה" },

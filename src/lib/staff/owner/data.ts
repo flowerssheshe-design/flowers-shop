@@ -137,6 +137,12 @@ export async function loadSupplierLines(
   weekStarts: string[],
 ): Promise<(SupplierLineRow & { week_start: string })[]> {
   if (weekStarts.length === 0) return [];
+  // With what really came and what was paid (migration 046).
+  const withReceipts = await admin
+    .from("supplier_order_lines")
+    .select("week_start, product_id, preorder_qty, extra_qty, final_qty, order_mode, received_qty, unit_cost")
+    .in("week_start", weekStarts);
+  if (!withReceipts.error) return (withReceipts.data ?? []) as (SupplierLineRow & { week_start: string })[];
   const withMode = await admin
     .from("supplier_order_lines")
     .select("week_start, product_id, preorder_qty, extra_qty, final_qty, order_mode")

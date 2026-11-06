@@ -30,11 +30,12 @@ export async function GET() {
     const [linesRes, productsRes, invRes, stallsRes, shiftsRes, distRes] = await Promise.all([
       admin
         .from("supplier_order_lines")
-        .select("product_id, final_qty, picked_up")
+        // "*" so received_qty / unit_cost (migration 046) come along when they exist.
+        .select("*")
         .eq("week_start", week.weekStart),
       admin
         .from("products")
-        .select("id, title, image_url, sort_order, is_active")
+        .select("id, title, image_url, sort_order, is_active, cost_price")
         .order("sort_order", { ascending: true }),
       admin.from("inventory").select("product_id, live_stock_count"),
       admin
@@ -59,16 +60,29 @@ export async function GET() {
 
     const allProducts = productsRes.data ?? [];
     const titles = new Map(allProducts.map((p) => [String(p.id), String(p.title)]));
+    const costs = new Map(allProducts.map((p) => [String(p.id), Number(p.cost_price) || 0]));
     const stockBy = new Map((invRes.data ?? []).map((r) => [String(r.product_id), Number(r.live_stock_count) || 0]));
 
     let source: "supplier" | "forecast" = "supplier";
-    let lines = (linesRes.data ?? [])
-      .filter((l) => Number(l.final_qty) > 0)
+    type LineRow = { product_id: string; final_qty: number; picked_up?: boolean; received_qty?: number | null; unit_cost?: number | null };
+    let lines: {
+      product_id: string;
+      title: string;
+      qty: number;
+      picked_up: boolean;
+      received_qty?: number | null;
+      unit_cost?: number | null;
+      cost_price?: number;
+    }[] = ((linesRes.data ?? []) as LineRow[])
+      .filter((l) => Number(l.final_qty) > 0 || (l.received_qty ?? 0) > 0)
       .map((l) => ({
         product_id: String(l.product_id),
         title: titles.get(String(l.product_id)) ?? "",
         qty: Number(l.final_qty) || 0,
         picked_up: l.picked_up === true,
+        received_qty: l.received_qty ?? null,
+        unit_cost: l.unit_cost === null || l.unit_cost === undefined ? null : Number(l.unit_cost),
+        cost_price: costs.get(String(l.product_id)) ?? 0,
       }))
       .sort((a, b) => a.title.localeCompare(b.title, "he"));
 

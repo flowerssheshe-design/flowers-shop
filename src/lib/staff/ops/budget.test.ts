@@ -61,9 +61,9 @@ describe("weekly budget split", () => {
 });
 
 describe("shift manager and employees", () => {
-  it("may manage only stall sellers and couriers", () => {
+  it("may manage stall sellers, couriers and supply runners", () => {
     expect(isOpsManageable({ role: "worker", work_types: ["stall_seller", "courier"] })).toBe(true);
-    expect(isOpsManageable({ role: "worker", work_types: ["stall_seller", "supply_runner"] })).toBe(false);
+    expect(isOpsManageable({ role: "worker", work_types: ["stall_seller", "supply_runner"] })).toBe(true);
     expect(isOpsManageable({ role: "ops_manager", work_types: [] })).toBe(false);
     expect(isOpsManageable({ role: "worker", work_types: [] })).toBe(false);
   });
@@ -71,7 +71,9 @@ describe("shift manager and employees", () => {
   it("may not set roles, other work types or pay", () => {
     expect(checkOpsEmployeeInput({ role: "worker", work_types: ["courier"] })).toBeNull();
     expect(checkOpsEmployeeInput({ role: "owner" })).not.toBeNull();
-    expect(checkOpsEmployeeInput({ work_types: ["supply_runner"] })).not.toBeNull();
+    expect(checkOpsEmployeeInput({ work_types: ["supply_runner"] })).toBeNull();
+    expect(checkOpsEmployeeInput({ work_types: ["supply_runner"], pay_type: "per_shift", pay_rate: 100 })).toBeNull();
+    expect(checkOpsEmployeeInput({ work_types: ["stall_seller"], pay_type: "per_shift", pay_rate: 100 })).not.toBeNull();
     expect(checkOpsEmployeeInput({ work_types: [] })).not.toBeNull();
     expect(checkOpsEmployeeInput({ pay_type: "hourly", pay_rate: 40 })).not.toBeNull();
     expect(checkOpsEmployeeInput({ pay_type: null, pay_rate: null })).toBeNull();

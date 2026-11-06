@@ -11,6 +11,7 @@ import { W } from "@/lib/staff/work/labels";
 import { api, formatDate, useStaffData } from "@/lib/staff/work/client";
 import { checkPinChangeInput } from "@/lib/staff/work/pin-change";
 import { Card, EmptyBlock, ErrorBlock, LoadingBlock, Stat } from "./common";
+import { RequestsCard } from "./RequestsCard";
 
 type ShiftView = {
   id: string;
@@ -169,6 +170,8 @@ export function MyAreaView() {
       <Card title={W.nextWeekShifts}>
         <ShiftList shifts={data.shifts.nextWeek} today={data.today} />
       </Card>
+
+      <RequestsCard />
 
       <PinChangeCard />
     </div>

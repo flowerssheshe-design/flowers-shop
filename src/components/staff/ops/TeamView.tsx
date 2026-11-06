@@ -299,6 +299,9 @@ function EmployeeForm({
   const [roles, setRoles] = React.useState<Responsibility[]>(member?.roles ?? []);
   const [workTypes, setWorkTypes] = React.useState<WorkType[]>(member?.work_types ?? []);
   const [active, setActive] = React.useState(member?.is_active ?? true);
+  // A new supply runner gets their pay right away (not from the weekly budget).
+  const [payType, setPayType] = React.useState<"hourly" | "per_shift">("per_shift");
+  const [payRate, setPayRate] = React.useState("");
   const [changePin, setChangePin] = React.useState(isNew);
   const [pin, setPin] = React.useState("");
   const [pin2, setPin2] = React.useState("");
@@ -340,7 +343,9 @@ function EmployeeForm({
       if (!/^\d{4,8}$/.test(pin)) return setErr(OPS.pinFormat);
       if (pin !== pin2) return setErr(OPS.pinMismatch);
     }
-    if (limited && workTypes.length === 0) return setErr("בחרו מוכר בדוכן, שליח או את שניהם.");
+    if (limited && workTypes.length === 0) return setErr("בחרו מוכר בדוכן, שליח או איסוף מהספק.");
+    const runnerPay = isNew && workTypes.includes("supply_runner") && payRate.trim() !== "";
+    if (runnerPay && !(Number(payRate) >= 0)) return setErr("כתבו שכר במספרים.");
 
     const body: Record<string, unknown> = {
       full_name: fullName.trim(),
@@ -349,6 +354,10 @@ function EmployeeForm({
       work_types: workTypes,
       is_active: active,
     };
+    if (runnerPay) {
+      body.pay_type = payType;
+      body.pay_rate = Number(payRate);
+    }
     if (changePin) {
       body.pin = pin;
       body.pin_confirm = pin2;
@@ -445,7 +454,7 @@ function EmployeeForm({
           <legend className="text-sm font-medium">{OPS.workTypes}</legend>
           <p className="text-xs text-muted-foreground">
             {limited
-              ? "מוכר בדוכן, שליח, או שניהם."
+              ? "מוכר בדוכן, שליח, איסוף מהספק, או כמה מהם."
               : "נפרד מהאחריות: גם מנהל יכול לעבוד בדוכן. מנהלים יכולים לקבל כל משמרת גם בלי סימון."}
           </p>
           <div className="grid gap-2 sm:grid-cols-3">
@@ -458,9 +467,39 @@ function EmployeeForm({
           </div>
         </fieldset>
 
+        {isNew && workTypes.includes("supply_runner") && !isOwnerRole && (
+          <fieldset className="space-y-2 rounded-md border p-3">
+            <legend className="px-1 text-sm font-medium">שכר על איסוף מהספק</legend>
+            <p className="text-xs text-muted-foreground">לא מהתקציב השבועי. מקבל רק כשמשובץ לאיסוף.</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={payType}
+                onChange={(e) => setPayType(e.target.value as "hourly" | "per_shift")}
+                className="h-11 rounded-md border bg-background px-2 text-sm"
+                aria-label="סוג שכר"
+              >
+                <option value="per_shift">לפי משמרת</option>
+                <option value="hourly">לפי שעה</option>
+              </select>
+              <Input
+                type="number"
+                inputMode="decimal"
+                min={0}
+                dir="ltr"
+                value={payRate}
+                onChange={(e) => setPayRate(e.target.value)}
+                placeholder="100"
+                className="h-11 w-28 text-left tabular-nums"
+                aria-label="סכום"
+              />
+              <span className="text-sm text-muted-foreground">₪</span>
+            </div>
+          </fieldset>
+        )}
+
         <p className="rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
           {limited ? (
-            "השכר על דוכן ומשלוחים נקבע מהתקציב השבועי, בדף השיבוץ."
+            "השכר על דוכן ומשלוחים נקבע מהתקציב השבועי. לאיסוף מהספק קובעים שכר כשמוסיפים את העובד."
           ) : isOwnerRole ? (
             OPS.ownersNotPaid
           ) : (

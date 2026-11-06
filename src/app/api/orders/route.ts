@@ -115,7 +115,8 @@ export async function POST(req: Request) {
     const ids = Array.from(new Set(body.items.map((it) => it.productId)));
     const { data, error } = await admin
       .from("products")
-      .select("id, title, price_standard, image_url, is_active")
+      // "*" so show_on_site (migration 046) is read when it exists.
+      .select("*")
       .in("id", ids);
     if (error) {
       console.error("Order products lookup error:", error);
@@ -124,8 +125,8 @@ export async function POST(req: Request) {
         { status: 500 },
       );
     }
-    products = ((data ?? []) as (PricingProduct & { is_active: boolean })[])
-      .filter((p) => p.is_active);
+    products = ((data ?? []) as (PricingProduct & { is_active: boolean; show_on_site?: boolean })[])
+      .filter((p) => p.is_active && p.show_on_site !== false);
   } catch (e) {
     console.error(e);
     return NextResponse.json(

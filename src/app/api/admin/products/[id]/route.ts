@@ -21,6 +21,7 @@ const PatchSchema = z.object({
   image_url: ImageUrlSchema.nullish(),
   image_urls: ImageUrlsSchema.optional(),
   is_active: z.boolean().optional(),
+  show_on_site: z.boolean().optional(),
   sort_order: z.number().int().min(0).max(10000).optional(),
 });
 
@@ -85,12 +86,13 @@ export async function PATCH(
 
   try {
     const supabase = createAdminClient();
-    const { data, error } = await supabase
-      .from("products")
-      .update({ ...parsed.data, ...normalizeImages(parsed.data) })
-      .eq("id", id)
-      .select("*")
-      .single();
+    const row: Record<string, unknown> = { ...parsed.data, ...normalizeImages(parsed.data) };
+    let { data, error } = await supabase.from("products").update(row).eq("id", id).select("*").single();
+    if (error && /show_on_site/.test(error.message ?? "")) {
+      // Before migration 046: no show_on_site column yet.
+      delete row.show_on_site;
+      ({ data, error } = await supabase.from("products").update(row).eq("id", id).select("*").single());
+    }
     if (error || !data) {
       return NextResponse.json(
         { error: "עדכון המוצר נכשל" },

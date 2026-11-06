@@ -182,10 +182,36 @@ export function payFieldsError(input: { pay_type?: unknown; pay_rate?: unknown; 
   return set(input.pay_type) || set(input.pay_rate) || set(input.responsibility_pay) ? PAY_PAGE_POINTER : null;
 }
 
-// ---- The shift manager hires stall sellers and couriers ----
+// ---- The shift manager hires stall sellers, couriers and supply runners ----
 
-/** Work types a shift manager may give (the ones paid from the weekly budget). */
-export const OPS_WORK_TYPES: WorkType[] = ["stall_seller", "courier"];
+/**
+ * Work types a shift manager may give. Stall sellers and couriers are paid
+ * from the weekly budget; a supply runner gets a pay set when they are added.
+ */
+export const OPS_WORK_TYPES: WorkType[] = ["stall_seller", "courier", "supply_runner"];
+
+export type CreationPay = { pay_type: "hourly" | "per_shift"; pay_rate: number };
+
+/**
+ * Pay given while adding an employee: only for a supply runner (stall and
+ * courier work is paid from the budget, everything else on the pay page).
+ * Returns the pay to save, null for none, or a Hebrew error.
+ */
+export function creationPay(input: {
+  work_types?: string[];
+  pay_type?: unknown;
+  pay_rate?: unknown;
+  responsibility_pay?: unknown;
+}): { ok: true; pay: CreationPay | null } | { ok: false; error: string } {
+  const set = (v: unknown) => v !== undefined && v !== null && v !== "";
+  if (set(input.responsibility_pay)) return { ok: false, error: PAY_PAGE_POINTER };
+  if (!set(input.pay_type) && !set(input.pay_rate)) return { ok: true, pay: null };
+  if (!(input.work_types ?? []).includes("supply_runner")) return { ok: false, error: PAY_PAGE_POINTER };
+  if (input.pay_type !== "hourly" && input.pay_type !== "per_shift") return { ok: false, error: "בחרו לפי שעה או לפי משמרת." };
+  const rate = Number(input.pay_rate);
+  if (!Number.isFinite(rate) || rate < 0 || rate > 100000) return { ok: false, error: "כתבו תעריף במספרים." };
+  return { ok: true, pay: { pay_type: input.pay_type, pay_rate: Math.round(rate * 100) / 100 } };
+}
 
 /** A worker whose every work type is stall seller / courier: the shift manager may manage them. */
 export function isOpsManageable(target: { role: StaffRole; work_types: string[] | null }): boolean {
@@ -205,12 +231,12 @@ export function checkOpsEmployeeInput(input: {
   if (input.role !== undefined && input.role !== "worker") return "מנהל משמרות יכול להוסיף רק עובדים.";
   if (input.roles !== undefined && input.roles.length > 0) return "רק המנהלים הראשיים קובעים אחריות.";
   if (input.work_types !== undefined) {
-    if (input.work_types.length === 0) return "בחרו לפחות סוג עבודה אחד: מוכר בדוכן או שליח.";
+    if (input.work_types.length === 0) return "בחרו לפחות סוג עבודה אחד: מוכר בדוכן, שליח או איסוף מהספק.";
     if (!input.work_types.every((w) => (OPS_WORK_TYPES as string[]).includes(w))) {
-      return "מנהל משמרות יכול להוסיף רק מוכרי דוכן ושליחים.";
+      return "מנהל משמרות יכול להוסיף רק מוכרי דוכן, שליחים ואיסוף מהספק.";
     }
   }
-  if ((input.pay_type ?? null) !== null || (input.pay_rate ?? null) !== null) {
+  if (((input.pay_type ?? null) !== null || (input.pay_rate ?? null) !== null) && !(input.work_types ?? []).includes("supply_runner")) {
     return "השכר של מוכרים ושליחים נקבע מהתקציב השבועי, לא כאן.";
   }
   if ((input.responsibility_pay ?? null) !== null) return "רק המנהלים הראשיים קובעים שכר על אחריות.";
