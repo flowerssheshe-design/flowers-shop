@@ -5,6 +5,7 @@ import { canManageTeam, hasRole, type StaffIdentity } from "@/lib/staff/access";
 import { addDays, currentBusinessWeek, israelWeekday } from "@/lib/staff/week";
 import { formatILS } from "@/lib/utils";
 import { loadPaymentsView } from "@/lib/staff/owner/payments-server";
+import { weekOrdersRange } from "@/lib/staff/work/ranges";
 import { loadStallSplit } from "./stall-split-server";
 import type { Task } from "./tasks";
 
@@ -12,7 +13,9 @@ type Admin = ReturnType<typeof createAdminClient>;
 
 /**
  * What is still open this week, worked out from the data (nothing is stored):
- * once a thing is done, its task disappears by itself.
+ * once a thing is done, its task disappears by itself. Only the current
+ * business week counts: when the week closes, last week's tasks are gone and
+ * the new week's tasks start.
  * Owners get the owner tasks; owners and shift managers get the shift and order tasks.
  */
 export async function loadTasks(admin: Admin, who: StaffIdentity, now: Date = new Date()): Promise<Task[]> {
@@ -23,24 +26,34 @@ export async function loadTasks(admin: Admin, who: StaffIdentity, now: Date = ne
   const owner = canManageTeam(who);
   const ops = owner || hasRole(who, "ops_manager");
   const tasks: Task[] = [];
+  const range = weekOrdersRange(week, settings);
 
   const [bwRes, budgetRes, stallsRes, shiftsRes, courierRes, allocRes, pendingRes] = await Promise.all([
-    admin.from("business_weeks").select("supplier_ordered_at").eq("week_start", week.weekStart).maybeSingle(),
+    admin.from("business_weeks").select("supplier_ordered_at, closed_at").eq("week_start", week.weekStart).maybeSingle(),
     admin.from("weekly_budgets").select("amount").eq("week_start", week.weekStart).maybeSingle(),
     admin.from("stalls").select("id, name").eq("is_active", true).order("sort_order"),
     admin.from("shifts").select("stall_id, shift_type").eq("work_date", friday),
     admin.from("week_assignments").select("employee_id").eq("week_start", week.weekStart).eq("assignment", "courier").maybeSingle(),
     admin.from("weekly_pay_allocations").select("amount").eq("week_start", week.weekStart),
-    admin.from("orders").select("id", { count: "exact", head: true }).eq("status", "pending_payment").neq("order_type", "stall"),
+    admin
+      .from("orders")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "pending_payment")
+      .neq("order_type", "stall")
+      .gte("created_at", range.from)
+      .lt("created_at", range.to),
   ]);
+
+  // A week that was already closed has no tasks left.
+  if ((bwRes.data as { closed_at?: string | null } | null)?.closed_at) return [];
 
   // ---------- Owner ----------
   if (owner) {
     const payments = await loadPaymentsView(admin, now).catch(() => null);
     if (payments) {
-      // Weeks that are over, plus this week once Friday (the stall day) has started.
+      // This week's pay only, from Friday (the stall day). Earlier weeks are on the pay page.
       const due = payments.weeks
-        .filter((w) => !w.isCurrent || weekday >= 5)
+        .filter((w) => w.isCurrent && weekday >= 5)
         .flatMap((w) => w.people.filter((p) => p.left > 0).map((p) => ({ ...p, week: w.weekStart })));
       if (due.length > 0) {
         const byPerson = new Map<string, { name: string; left: number }>();
