@@ -414,23 +414,13 @@ function OrderSheet({
         onOpenChange={(v) => !v && !busy && onClose()}
         title={OPS.orderDetails}
         footer={
-          actions.length === 0 ? (
+          // "ביטול הזמנה" was removed from here: "ביטול אישור" and "מחיקה" cover it.
+          actions.filter((a) => a !== "cancel").length === 0 ? (
             <Button variant="outline" className="h-11 sm:h-10" onClick={onClose}>
               {T.close}
             </Button>
           ) : (
             <>
-              {actions.includes("cancel") && (
-                <Button
-                  variant="outline"
-                  className="h-11 text-destructive hover:text-destructive sm:h-10"
-                  disabled={!!busy}
-                  onClick={() => setConfirmCancel(true)}
-                >
-                  <XCircle className="h-4 w-4" aria-hidden="true" />
-                  {OPS.cancelOrder}
-                </Button>
-              )}
               {actions.includes("unapprove") && o.order_type !== "stall" && (
                 <Button variant="outline" className="h-11 sm:h-10" disabled={!!busy} onClick={() => act("unapprove")}>
                   <Undo2 className="h-4 w-4" aria-hidden="true" />
@@ -582,15 +572,6 @@ function OrderSheet({
           }
         }}
         onCancel={() => setConfirmDelete(false)}
-      />
-      <ConfirmDialog
-        open={confirmCancel}
-        title={OPS.cancelOrder + "?"}
-        description={OPS.cancelOrderConfirm}
-        confirmLabel={OPS.cancelOrder}
-        busy={busy === "cancel"}
-        onConfirm={() => act("cancel")}
-        onCancel={() => setConfirmCancel(false)}
       />
     </>
   );
