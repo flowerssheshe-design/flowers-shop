@@ -26,7 +26,7 @@ export function SaleDialog({
   stallId: string;
   onClose: () => void;
   onSold: () => void;
-  bit: { number: string; qr_url: string };
+  bit: { number: string; qr_url: string; group_url?: string };
   stallName: string;
 }) {
   const { toast } = useToast();
@@ -155,6 +155,7 @@ export function SaleDialog({
           amount={total}
           bitNumber={bit.number}
           qrUrl={bit.qr_url}
+          groupUrl={bit.group_url}
           stallName={stallName}
         />
       </DialogContent>

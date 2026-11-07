@@ -34,7 +34,8 @@ export async function GET(req: Request) {
       // Sales open on Friday morning; before that the screen is for looking and preparing.
       canSell: canSellNow(),
       stalls: stalls.map((s) => ({ id: s.id, name: s.name, location: s.location ?? null })),
-      bit: { number: settings.stall_bit_number ?? "", qr_url: settings.stall_bit_qr_url ?? "" },
+      // With a Bit group link the stall shows its QR (customers pay into the group).
+      bit: { number: settings.stall_bit_number ?? "", qr_url: settings.stall_bit_qr_url ?? "", group_url: settings.bit_group_url ?? "" },
     };
     if (!stall) return NextResponse.json({ ...base, stall: null });
 

@@ -364,6 +364,7 @@ export function StallView({ meId }: { meId: string }) {
         amount={0}
         bitNumber={data.bit.number}
         qrUrl={data.bit.qr_url}
+        groupUrl={data.bit.group_url}
         stallName={stall.name}
       />
     </div>

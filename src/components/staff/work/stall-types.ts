@@ -46,7 +46,7 @@ export type StallData = {
   /** Friday: sales are open. */
   canSell?: boolean;
   stalls: { id: string; name: string; location: string | null }[];
-  bit: { number: string; qr_url: string };
+  bit: { number: string; qr_url: string; group_url?: string };
   stall: { id: string; name: string; location: string | null; is_open: boolean } | null;
   products?: StallProduct[];
   sales?: StallSale[];

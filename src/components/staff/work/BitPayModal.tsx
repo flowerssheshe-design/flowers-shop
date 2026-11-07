@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import QRCode from "qrcode";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { buildBitLink, formatILS } from "@/lib/utils";
@@ -13,6 +14,7 @@ export function BitPayModal({
   amount,
   bitNumber,
   qrUrl,
+  groupUrl,
   stallName,
 }: {
   open: boolean;
@@ -20,8 +22,30 @@ export function BitPayModal({
   amount: number;
   bitNumber: string;
   qrUrl: string;
+  /** Bit group link: when set, the QR is made from it and the customer pays into the group. */
+  groupUrl?: string;
   stallName: string;
 }) {
+  const group = (groupUrl ?? "").trim();
+  const [groupQr, setGroupQr] = useState<string | null>(null);
+  useEffect(() => {
+    if (!group) {
+      setGroupQr(null);
+      return;
+    }
+    let alive = true;
+    QRCode.toDataURL(group, { margin: 1, width: 560 })
+      .then((d) => {
+        if (alive) setGroupQr(d);
+      })
+      .catch(() => {
+        if (alive) setGroupQr(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [group]);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -36,9 +60,11 @@ export function BitPayModal({
 
   if (!open) return null;
 
-  const number = bitNumber.trim();
-  let link: string | null = null;
-  if (number) {
+  // The group (when set) wins over the number and the uploaded QR picture.
+  const number = group ? "" : bitNumber.trim();
+  const qr = group ? groupQr ?? "" : qrUrl;
+  let link: string | null = group || null;
+  if (!group && number) {
     try {
       link = buildBitLink(number, amount, `פרחים – ${stallName}`);
     } catch {
@@ -69,11 +95,11 @@ export function BitPayModal({
           </>
         )}
 
-        {qrUrl ? (
+        {qr ? (
           <>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={qrUrl}
+              src={qr}
               alt="ברקוד לתשלום בביט"
               className="h-auto w-full max-w-[280px] rounded-lg border bg-white p-2"
             />
@@ -90,7 +116,7 @@ export function BitPayModal({
           </div>
         )}
 
-        {!number && !qrUrl && <p className="max-w-xs text-base text-red-700">{W.bitNotSet}</p>}
+        {!group && !number && !qrUrl && <p className="max-w-xs text-base text-red-700">{W.bitNotSet}</p>}
 
         {link && (
           <a
