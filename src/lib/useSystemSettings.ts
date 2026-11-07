@@ -77,6 +77,8 @@ function applySettings(data: unknown): SystemSettings {
     is_stall_open: readBool(s?.is_stall_open, DEFAULTS.is_stall_open),
     friday_delivery: readBool(s?.friday_delivery, DEFAULTS.friday_delivery),
     friday_pickup: readBool(s?.friday_pickup, DEFAULTS.friday_pickup),
+    order_approval_phone: readValue(s?.order_approval_phone, DEFAULTS.order_approval_phone),
+    bit_group_url: readValue(s?.bit_group_url, DEFAULTS.bit_group_url),
     supplier_order_day: readNumber(s?.supplier_order_day, DEFAULTS.supplier_order_day),
     supplier_order_time: readValue(s?.supplier_order_time, DEFAULTS.supplier_order_time),
     week_close_day: readNumber(s?.week_close_day, DEFAULTS.week_close_day),

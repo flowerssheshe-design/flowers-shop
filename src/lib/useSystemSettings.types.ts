@@ -31,6 +31,10 @@
   friday_delivery?: boolean;
   /** Customers can order pickup on Friday itself. */
   friday_pickup?: boolean;
+  /** WhatsApp of the orders manager: customers send the order + payment receipt there. "" = whatsapp_number. */
+  order_approval_phone?: string;
+  /** Bit group link: when set, customers pay through it (button + QR) instead of the Bit number. */
+  bit_group_url?: string;
 };
 
 export const DEFAULTS: Required<SystemSettings> = {
@@ -61,4 +65,6 @@ export const DEFAULTS: Required<SystemSettings> = {
   money_start_date: "",
   friday_delivery: true,
   friday_pickup: true,
+  order_approval_phone: "",
+  bit_group_url: "",
 };

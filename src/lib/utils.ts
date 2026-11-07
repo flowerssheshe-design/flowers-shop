@@ -38,7 +38,9 @@ export function buildWhatsAppLink(
   phone: string,
   message: string,
 ): string {
-  const cleaned = phone.replace(/\D/g, "");
+  let cleaned = phone.replace(/\D/g, "");
+  // wa.me needs the international form: an Israeli 05x number becomes 9725x.
+  if (cleaned.startsWith("0")) cleaned = `972${cleaned.slice(1)}`;
   return `https://wa.me/${cleaned}?text=${encodeURIComponent(message)}`;
 }
 

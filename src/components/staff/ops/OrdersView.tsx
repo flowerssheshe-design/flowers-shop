@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Bike, CheckCircle2, CreditCard, Gift, MapPin, Phone, Search, ShoppingBag, StickyNote, Trash2, XCircle } from "lucide-react";
+import { Bike, CheckCircle2, CreditCard, Gift, MapPin, MessageCircle, Phone, Search, ShoppingBag, StickyNote, Trash2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -9,7 +9,8 @@ import { useToast } from "@/components/ui/toaster";
 import { StaffPageHeader, type ShellEmployee } from "@/components/staff/StaffShell";
 import { T } from "@/lib/staff/labels";
 import { canManageTeam } from "@/lib/staff/access";
-import { cn, formatILS } from "@/lib/utils";
+import { buildWhatsAppLink, cn, formatILS } from "@/lib/utils";
+import { useSystemSettings } from "@/lib/useSystemSettings";
 import { OPS, ORDER_TYPE_LABELS, PAYMENT_LABELS } from "@/lib/staff/ops/labels";
 import { formatDateTime, opsFetch } from "@/lib/staff/ops/client";
 import { ORDER_STATUSES, ORDER_TYPES, actionsFor, filterOrders, isDelivery, summarizeOrders, type OrderAction, type OrderFilters } from "@/lib/staff/ops/orders";
@@ -339,6 +340,22 @@ function OrderSheet({
   const [deleting, setDeleting] = React.useState(false);
   const actions = actionsFor(o.status);
   const itemsTotal = o.items.reduce((sum, it) => sum + it.qty * it.price, 0);
+  const settings = useSystemSettings();
+  // After "אישור תשלום": a ready WhatsApp message to the customer that the payment arrived.
+  const confirmLink =
+    o.status === "approved" && o.customer_phone && (o.payment_method === "bit" || o.payment_method === "paybox")
+      ? buildWhatsAppLink(
+          o.customer_phone,
+          [
+            `שלום ${o.customer_name}! 🌸`,
+            `התשלום על ההזמנה שלך ב"לתת מהלב" התקבל ✓`,
+            isDelivery(o)
+              ? `המשלוח יגיע לכתובת: ${o.delivery_address ?? ""}`
+              : `אפשר לאסוף ביום שישי${settings.pickup_hours ? `, ${settings.pickup_hours}` : ""}.`,
+            `תודה!`,
+          ].join(String.fromCharCode(10)),
+        )
+      : null;
 
   async function act(a: OrderAction) {
     setBusy(a);
@@ -408,6 +425,18 @@ function OrderSheet({
         <p className="text-xs text-muted-foreground">{formatDateTime(o.created_at)}</p>
 
         <OrderNotes order={o} />
+
+        {confirmLink && (
+          <a
+            href={confirmLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex min-h-12 items-center justify-center gap-2 rounded-md bg-[#25D366] px-3 text-base font-medium text-white hover:bg-[#1ebe5a]"
+          >
+            <MessageCircle className="h-5 w-5" aria-hidden="true" />
+            שליחת אישור תשלום ללקוח בוואטסאפ
+          </a>
+        )}
 
         <section className="space-y-1.5 rounded-md border p-3 text-sm">
           <p className="font-medium">{o.customer_name || "—"}</p>

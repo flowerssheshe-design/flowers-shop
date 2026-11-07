@@ -20,7 +20,8 @@ import {
   Store,
   Wallet,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import QRCode from "qrcode";
 import Link from "next/link";
 
 function CopyButton({ value }: { value: string }) {
@@ -110,19 +111,19 @@ export function OrderConfirmation({
       : "",
     ``,
     `*סה"כ:* *${formatILS(order.total_amount)}*`,
-    `שילמתי ב-${
-      order.payment_method === "bit"
-        ? "ביט"
-        : order.payment_method === "paybox"
-          ? "פייבוקס"
-          : "מזומן"
-    } / ממתין לאישור`,
+    order.payment_method === "bit"
+      ? "שילמתי בביט. מצרף/ת כאן צילום מסך של אסמכתת ההעברה."
+      : order.payment_method === "paybox"
+        ? "שילמתי בפייבוקס. מצרף/ת כאן צילום מסך של אסמכתת ההעברה."
+        : "אשלם במזומן באיסוף.",
     ``,
     `קישור לאתר:${SITE_URL}`,
   ]
     .join("\n");
 
-  const waLink = buildWhatsAppLink(settings.whatsapp_number ?? "", waMsg);
+  // The order + payment receipt go to the orders manager (falls back to the business WhatsApp).
+  const waLink = buildWhatsAppLink(settings.order_approval_phone || settings.whatsapp_number || "", waMsg);
+  const bitGroupUrl = (settings.bit_group_url ?? "").trim();
   const bitLink =
     paymentMethod === "bit" && effectiveBitNumber
       ? buildBitLink(effectiveBitNumber, order.total_amount, "תשלום ביט בלתת מהלב")
@@ -279,7 +280,9 @@ export function OrderConfirmation({
           </h2>
         </div>
 
-        {paymentMethod === "bit" && (
+        {paymentMethod === "bit" && bitGroupUrl && <BitGroupPay url={bitGroupUrl} amount={order.total_amount} />}
+
+        {paymentMethod === "bit" && !bitGroupUrl && (
           <>
             <div className="rounded-lg bg-card/60 p-3 text-sm">
               <p className="text-foreground">
@@ -369,9 +372,18 @@ export function OrderConfirmation({
       <div className="flex items-start gap-3 rounded-xl border border-primary/10 bg-primary/5 p-4">
         <InfoIcon className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
         <div>
-          <p className="text-sm font-medium text-foreground">מה הלאה?</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-           לאשר בכפתור על ידי לחיצה. והזמנה תאושר בהקדם אפשרי </p>
+          <p className="text-sm font-medium text-foreground">מה עכשיו?</p>
+          {paymentMethod === "bit" || paymentMethod === "paybox" ? (
+            <ol className="mt-1 list-decimal space-y-1 ps-4 text-sm text-muted-foreground">
+              <li>משלמים {formatILS(order.total_amount)} {paymentMethod === "bit" ? "בביט" : "בפייבוקס"}.</li>
+              <li>
+                <b className="text-foreground">שולחים אסמכתה של ההעברה</b> (צילום מסך מהאפליקציה) בוואטסאפ, בכפתור למטה.
+              </li>
+              <li>ההזמנה מאושרת אחרי שבודקים את התשלום, ותקבלו הודעת אישור.</li>
+            </ol>
+          ) : (
+            <p className="mt-1 text-sm text-muted-foreground">שולחים את ההזמנה בוואטסאפ בכפתור למטה, ומשלמים במזומן באיסוף.</p>
+          )}
         </div>
       </div>
 
@@ -385,9 +397,9 @@ export function OrderConfirmation({
         >
           <a href={waLink} target="_blank" rel="noopener noreferrer">
             <MessageCircle className="h-5 w-5" />
-            {paymentMethod === "bit"
-              ? "אישור תשלום בוואטסאפ"
-              : "אישור הזמנה בוואטסאפ"}
+            {paymentMethod === "bit" || paymentMethod === "paybox"
+              ? "שליחת אסמכתה בוואטסאפ"
+              : "שליחת ההזמנה בוואטסאפ"}
           </a>
         </Button>
 
@@ -432,5 +444,52 @@ function InfoIcon({ className }: { className?: string }) {
       <path d="M12 16v-4" />
       <path d="M12 8h.01" />
     </svg>
+  );
+}
+
+/** Pay through the Bit group: a button that opens it, and a QR code to scan from another phone. */
+function BitGroupPay({ url, amount }: { url: string; amount: number }) {
+  const [qr, setQr] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    QRCode.toDataURL(url, { margin: 1, width: 220 })
+      .then((d) => {
+        if (alive) setQr(d);
+      })
+      .catch(() => {
+        if (alive) setQr(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [url]);
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-lg bg-card/60 p-3 text-sm">
+        <p className="text-foreground">
+          לשלם <strong className="font-semibold">{formatILS(amount)}</strong> בקבוצת הביט שלנו
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">אחרי התשלום שלחו אסמכתה בוואטסאפ, בכפתור למטה.</p>
+      </div>
+      <Button
+        size="lg"
+        className="w-full rounded-xl border-none bg-[#00b2b2] text-white hover:bg-[#009999]"
+        onClick={() => window.open(url, "_blank", "noopener,noreferrer")}
+      >
+        <span className="flex items-center justify-center gap-2">
+          <CreditCard className="h-4 w-4 text-white" />
+          תשלום בקבוצת ביט
+          <ArrowRight className="h-4 w-4 text-white" />
+        </span>
+      </Button>
+      {qr && (
+        <div className="flex flex-col items-center gap-1 rounded-lg border bg-white p-3">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={qr} alt="ברקוד QR לקבוצת הביט" width={180} height={180} />
+          <p className="text-xs text-muted-foreground">אפשר גם לסרוק מטלפון אחר</p>
+        </div>
+      )}
+    </div>
   );
 }

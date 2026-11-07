@@ -38,6 +38,8 @@ export const SettingsSchema = z
     whatsapp_number: text(30),
     business_email: z.union([z.string().trim().email().max(200), z.literal("")]),
     bit_number: text(40),
+    order_approval_phone: text(30),
+    bit_group_url: z.union([z.string().trim().url().max(1000), z.literal("")]),
     paybox_number: text(40),
     // banner
     announcement_banner_text: text(500),
