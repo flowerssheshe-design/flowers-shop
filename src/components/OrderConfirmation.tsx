@@ -90,6 +90,7 @@ export function OrderConfirmation({
   paymentMethod,
 }: Props) {
   const settings = useSystemSettings();
+  const [sent, setSent] = useState(false);
   const effectiveBitNumber = bitNumber ?? settings.bit_number;
   const items = Array.isArray(order.items) ? order.items : [];
 
@@ -147,10 +148,11 @@ export function OrderConfirmation({
     { label: "הזמנה", done: true },
     {
       label: "תשלום",
-      done: paymentMethod === "cash" || paymentMethod === "bit",
-      active: paymentMethod !== "cash" && paymentMethod !== "bit",
+      done: sent || paymentMethod === "cash" || paymentMethod === "bit",
+      active: !sent && paymentMethod !== "cash" && paymentMethod !== "bit",
     },
-    { label: "אישור", done: false, active: paymentMethod !== "bit" && paymentMethod !== "cash" },
+    // Green once the customer pressed the WhatsApp button (order / receipt sent).
+    { label: "אישור", done: sent, active: !sent && paymentMethod !== "bit" && paymentMethod !== "cash" },
   ];
 
   return (
@@ -367,6 +369,18 @@ export function OrderConfirmation({
         )}
       </div>
 
+      {sent && (
+        <div role="status" className="rounded-2xl border-2 border-primary/30 bg-primary/10 p-5 text-center">
+          <p className="text-2xl">🌸</p>
+          <p className="brand-serif mt-1 text-xl font-bold text-primary">תודה על ההזמנה!</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {paymentMethod === "bit" || paymentMethod === "paybox"
+              ? "קיבלנו. אחרי שנבדוק את התשלום תקבלו הודעת אישור בוואטסאפ."
+              : "קיבלנו את ההזמנה. נתראה באיסוף!"}
+          </p>
+        </div>
+      )}
+
       {/* Next Steps */}
       <div className="flex items-start gap-3 rounded-xl border border-primary/10 bg-primary/5 p-4">
         <InfoIcon className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
@@ -394,7 +408,7 @@ export function OrderConfirmation({
           size="lg"
           className="w-full h-12 text-base"
         >
-          <a href={waLink} target="_blank" rel="noopener noreferrer">
+          <a href={waLink} target="_blank" rel="noopener noreferrer" onClick={() => setSent(true)}>
             <MessageCircle className="h-5 w-5" />
             {paymentMethod === "bit" || paymentMethod === "paybox"
               ? "שליחת אסמכתה בוואטסאפ"
