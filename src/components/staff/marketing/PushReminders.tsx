@@ -13,8 +13,8 @@ import { REMINDER_KINDS, type ReminderConfig, type ReminderKind } from "@/lib/st
 import { Card, ErrorState, Loading, api } from "./ui";
 
 const LABELS: Record<ReminderKind, { day: string; hint: string }> = {
-  tuesday: { day: "שלישי", hint: "לפני שנסגרת ההזמנה מהספק: להבטיח זר בהזמנה מראש." },
-  thursday: { day: "חמישי", hint: "ערב לפני הדוכנים: המלאי מוגבל. {left} = כמה זרים עוד אפשר להזמין." },
+  tuesday: { day: "שלישי", hint: "בבוקר, לפני שנסגרת ההזמנה מהספק. {deadline} = שעת ההזמנה מהספק." },
+  thursday: { day: "חמישי", hint: "בערב, כשמתכננים את השבת. {left} = כמה זרים עוד אפשר להזמין (אם לא נשאר כלום, לא נשלח)." },
 };
 
 /** "התראות אוטומטיות": the weekly Tuesday / Thursday notifications. */

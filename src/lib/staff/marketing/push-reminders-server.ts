@@ -1,6 +1,7 @@
 import "server-only";
 import type { createAdminClient } from "@/lib/supabase/admin";
 import { israelDate, israelWeekday } from "@/lib/staff/week";
+import { getServerSettings } from "@/lib/settings-server";
 import { loadStallSplit } from "@/lib/staff/ops/stall-split-server";
 import { pushConfigured, sendPushToAll } from "./push";
 import { REMINDER_KINDS, isReminderDue, parseReminders, renderReminder, type ReminderConfig, type ReminderKind } from "./push-reminders";
@@ -44,6 +45,7 @@ export type ReminderRun = { kind: ReminderKind; status: "sent" | "skipped"; deta
 export async function runPushReminders(admin: Admin, now: Date = new Date()): Promise<{ configured: boolean; runs: ReminderRun[] }> {
   if (!pushConfigured()) return { configured: false, runs: [] };
   const { config, sent } = await loadReminders(admin);
+  const settings = await getServerSettings();
   const clock = { weekday: israelWeekday(now), hour: israelHour(now), date: israelDate(now) };
   const runs: ReminderRun[] = [];
   let changed = false;
@@ -53,7 +55,7 @@ export async function runPushReminders(admin: Admin, now: Date = new Date()): Pr
     // Mark first, so two runs at the same time can't both send.
     sent[kind] = clock.date;
     changed = true;
-    const msg = renderReminder(config[kind], { left: await bouquetsLeft(admin) });
+    const msg = renderReminder(config[kind], { left: await bouquetsLeft(admin), deadline: settings.supplier_order_time });
     if (!msg) {
       runs.push({ kind, status: "skipped", detail: "no bouquets left" });
       continue;

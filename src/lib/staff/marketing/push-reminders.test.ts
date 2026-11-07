@@ -13,7 +13,7 @@ describe("weekly push reminders", () => {
 
   it("fills {left} and skips when nothing is left", () => {
     const thu = DEFAULT_REMINDERS.thursday;
-    expect(renderReminder(thu, { left: 12 })?.body).toContain("12");
+    expect(renderReminder(thu, { left: 12 })?.title).toContain("12");
     expect(renderReminder(thu, { left: 0 })).toBeNull();
     expect(renderReminder(tue, { left: null })?.title).toBe(tue.title);
   });
@@ -24,4 +24,8 @@ describe("weekly push reminders", () => {
     expect(c.thursday.title).toBe(DEFAULT_REMINDERS.thursday.title);
     expect(parseReminders("garbage")).toEqual(DEFAULT_REMINDERS);
   });
+});
+
+it("fills {deadline} from the supplier order time", () => {
+  expect(renderReminder(DEFAULT_REMINDERS.tuesday, { left: null, deadline: "12:00" })?.body).toContain("עד 12:00");
 });

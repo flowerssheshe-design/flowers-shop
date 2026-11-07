@@ -1,9 +1,10 @@
 // Automatic weekly push notifications (Tuesday / Thursday). Pure rules, no server imports.
 //
-// Tuesday: "secure your bouquet" before the supplier order closes — a
-// pre-order is the only way to be sure of a bouquet, and it tells us how
-// much to order. Thursday: stock is limited, order now for Friday ({left} =
-// how many bouquets can still be ordered).
+// Tuesday (morning, hours before the supplier order closes): a pre-order is
+// the only way to be sure of the exact bouquet — loss aversion + a clear
+// deadline ({deadline} = the supplier order time). Thursday (evening, when
+// families plan Shabbat): real scarcity with a real number ({left} = bouquets
+// that can still be ordered) and an easy next step for Friday.
 
 import { z } from "zod";
 
@@ -28,14 +29,14 @@ export const DEFAULT_REMINDERS: ReminderConfig = {
   tuesday: {
     enabled: true,
     hour: 9,
-    title: "להבטיח זר לשישי 🌸",
-    body: "היום נסגרת ההזמנה מהספק. מזמינים עכשיו מראש ומקבלים בדיוק את הזר שרציתם ביום שישי.",
+    title: "🌸 נשארו כמה שעות להזמנה מראש",
+    body: "מזמינים עד {deadline} ומבטיחים בדיוק את הזר שבחרתם לשבת: טרי, ארוז ומחכה לכם ביום שישי. אחר כך יש רק מה שנשאר.",
   },
   thursday: {
     enabled: true,
-    hour: 18,
-    title: "המלאי מוגבל, הזמינו מהר 💐",
-    body: "נשארו רק {left} זרים לשישי. הזמינו עכשיו כדי להספיק, לאיסוף מהדוכן או למשלוח.",
+    hour: 19,
+    title: "נשארו רק {left} זרים לשבת 💐",
+    body: "מזמינים עכשיו, ומחר אוספים מהדוכן בלי לחפש ובלי לחכות. או שהזר מגיע אליכם הביתה. כשזה נגמר, זה נגמר.",
   },
 };
 
@@ -75,10 +76,18 @@ export function isReminderDue(
   return lastSentDate !== now.date;
 }
 
-/** Fills {left}. Returns null when the text needs {left} and nothing is left (don't send "0 left"). */
-export function renderReminder(r: Reminder, vars: { left: number | null }): { title: string; body: string } | null {
+/**
+ * Fills {left} (bouquets that can still be ordered) and {deadline} (the
+ * supplier order time, e.g. "12:00"). Returns null when the text needs
+ * {left} and nothing is left: a "0 left" message would only disappoint.
+ */
+export function renderReminder(
+  r: Reminder,
+  vars: { left: number | null; deadline?: string | null },
+): { title: string; body: string } | null {
   const needsLeft = /\{left\}/.test(r.title + r.body);
   if (needsLeft && (vars.left === null || vars.left <= 0)) return null;
-  const fill = (s: string) => s.replace(/\{left\}/g, String(vars.left ?? ""));
+  const fill = (s: string) =>
+    s.replace(/\{left\}/g, String(vars.left ?? "")).replace(/\{deadline\}/g, vars.deadline || "הצהריים");
   return { title: fill(r.title), body: fill(r.body) };
 }
