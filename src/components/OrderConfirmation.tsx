@@ -20,8 +20,7 @@ import {
   Store,
   Wallet,
 } from "lucide-react";
-import { useEffect, useState } from "react";
-import QRCode from "qrcode";
+import { useState } from "react";
 import Link from "next/link";
 
 function CopyButton({ value }: { value: string }) {
@@ -447,23 +446,8 @@ function InfoIcon({ className }: { className?: string }) {
   );
 }
 
-/** Pay through the Bit group: a button that opens it, and a QR code to scan from another phone. */
+/** Pay through the Bit group: a button that opens it (the QR is only at the stall). */
 function BitGroupPay({ url, amount }: { url: string; amount: number }) {
-  const [qr, setQr] = useState<string | null>(null);
-  useEffect(() => {
-    let alive = true;
-    QRCode.toDataURL(url, { margin: 1, width: 220 })
-      .then((d) => {
-        if (alive) setQr(d);
-      })
-      .catch(() => {
-        if (alive) setQr(null);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [url]);
-
   return (
     <div className="space-y-3">
       <div className="rounded-lg bg-card/60 p-3 text-sm">
@@ -483,13 +467,6 @@ function BitGroupPay({ url, amount }: { url: string; amount: number }) {
           <ArrowRight className="h-4 w-4 text-white" />
         </span>
       </Button>
-      {qr && (
-        <div className="flex flex-col items-center gap-1 rounded-lg border bg-white p-3">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={qr} alt="ברקוד QR לקבוצת הביט" width={180} height={180} />
-          <p className="text-xs text-muted-foreground">אפשר גם לסרוק מטלפון אחר</p>
-        </div>
-      )}
     </div>
   );
 }

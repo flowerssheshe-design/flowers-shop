@@ -81,7 +81,7 @@ export const GROUPS: Group[] = [
         label: "קישור לקבוצת ביט",
         kind: "url",
         ltr: true,
-        hint: "כשיש קישור, הלקוח משלם דרך הקבוצה (כפתור וברקוד QR). ריק = תשלום למספר הביט.",
+        hint: "כשיש קישור, משלמים דרך הקבוצה: באתר עם כפתור לקישור, ובדוכן עם ברקוד QR. ריק = תשלום למספר הביט.",
       },
       { key: "bit_number", label: "מספר ביט (תשלום באתר)", kind: "phone", ltr: true },
       { key: "paybox_number", label: "מספר פייבוקס", kind: "phone", ltr: true },
