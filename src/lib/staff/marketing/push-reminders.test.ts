@@ -12,7 +12,7 @@ describe("weekly push reminders", () => {
   });
 
   it("fills {left} and skips when nothing is left", () => {
-    const thu = DEFAULT_REMINDERS.thursday;
+    const thu = { ...DEFAULT_REMINDERS.thursday, title: "נשארו {left} זרים" };
     expect(renderReminder(thu, { left: 12 })?.title).toContain("12");
     expect(renderReminder(thu, { left: 0 })).toBeNull();
     expect(renderReminder(tue, { left: null })?.title).toBe(tue.title);

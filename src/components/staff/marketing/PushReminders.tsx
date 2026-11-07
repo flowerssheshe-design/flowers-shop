@@ -14,7 +14,7 @@ import { Card, ErrorState, Loading, api } from "./ui";
 
 const LABELS: Record<ReminderKind, { day: string; hint: string }> = {
   tuesday: { day: "שלישי", hint: "בבוקר, לפני שנסגרת ההזמנה מהספק. {deadline} = שעת ההזמנה מהספק." },
-  thursday: { day: "חמישי", hint: "בערב, כשמתכננים את השבת. {left} = כמה זרים עוד אפשר להזמין (אם לא נשאר כלום, לא נשלח)." },
+  thursday: { day: "חמישי", hint: "בערב, כשמתכננים את השבת: שעות אחרונות להזמין מראש לשישי." },
 };
 
 /** "התראות אוטומטיות": the weekly Tuesday / Thursday notifications. */

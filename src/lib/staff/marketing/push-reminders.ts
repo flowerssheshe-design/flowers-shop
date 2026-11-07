@@ -3,8 +3,9 @@
 // Tuesday (morning, hours before the supplier order closes): a pre-order is
 // the only way to be sure of the exact bouquet — loss aversion + a clear
 // deadline ({deadline} = the supplier order time). Thursday (evening, when
-// families plan Shabbat): real scarcity with a real number ({left} = bouquets
-// that can still be ordered) and an easy next step for Friday.
+// families plan Shabbat): last hours to order ahead for Friday. ({left} =
+// bouquets that can still be ordered is available, but not in the default
+// text: there is usually plenty before Friday, so a number wouldn't scare anyone.)
 
 import { z } from "zod";
 
@@ -35,8 +36,8 @@ export const DEFAULT_REMINDERS: ReminderConfig = {
   thursday: {
     enabled: true,
     hour: 19,
-    title: "נשארו רק {left} זרים לשבת 💐",
-    body: "מזמינים עכשיו, ומחר אוספים מהדוכן בלי לחפש ובלי לחכות. או שהזר מגיע אליכם הביתה. כשזה נגמר, זה נגמר.",
+    title: "⏳ שעות אחרונות להזמין לשבת",
+    body: "מזמינים עכשיו, ומחר הזר כבר מוכן ומחכה לכם בדוכן, או מגיע עד הבית. בלי לחפש ובלי לחכות בתור 💐",
   },
 };
 
