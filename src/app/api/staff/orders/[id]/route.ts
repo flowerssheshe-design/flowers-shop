@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireStaff } from "@/lib/staff/guard";
-import { canManageTeam } from "@/lib/staff/access";
 import { getStoreMode, isRealtimeMode } from "@/lib/storeMode";
 import { T } from "@/lib/staff/labels";
 import { OrderActionSchema } from "@/lib/staff/ops/schemas";
@@ -103,12 +102,13 @@ export async function PATCH(req: Request, ctx: { params: { id: string } }) {
 }
 
 /**
- * Delete an order completely (main managers only), e.g. a test order or a
+ * Delete an order completely (main managers and the orders manager), e.g. a test order or a
  * duplicate. Stock taken for it goes back. A stall sale's stall stock is not
  * touched here: undo it from the stall screen instead.
  */
 export async function DELETE(_req: Request, ctx: { params: { id: string } }) {
-  const guard = await requireStaff("orders", canManageTeam);
+  // Main managers and the orders manager (everyone with the orders page).
+  const guard = await requireStaff("orders");
   if (!guard.ok) return guard.response;
   const nc = notConfigured();
   if (nc) return nc;

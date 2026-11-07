@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toaster";
 import { StaffPageHeader, type ShellEmployee } from "@/components/staff/StaffShell";
 import { T } from "@/lib/staff/labels";
-import { canManageTeam } from "@/lib/staff/access";
+import { canManageTeam, hasRole } from "@/lib/staff/access";
 import { buildWhatsAppLink, cn, formatILS } from "@/lib/utils";
 import { useSystemSettings } from "@/lib/useSystemSettings";
 import { OPS, ORDER_TYPE_LABELS, PAYMENT_LABELS } from "@/lib/staff/ops/labels";
@@ -72,6 +72,19 @@ export function OrdersView({ me }: { me: ShellEmployee }) {
       return { ...d, orders: list, summary: summarizeOrders(list) };
     });
     toast({ title: "ההזמנה נמחקה", variant: "success" });
+  }
+
+  // "אישור תשלום" right from the list, without opening each order.
+  const [quickBusy, setQuickBusy] = React.useState<string | null>(null);
+  async function quickApprove(o: StaffOrder) {
+    setQuickBusy(o.id);
+    try {
+      await runAction(o, "approve");
+    } catch (e) {
+      toast({ title: e instanceof Error ? e.message : T.saveError, variant: "error" });
+    } finally {
+      setQuickBusy(null);
+    }
   }
 
   async function runAction(o: StaffOrder, action: OrderAction) {
@@ -151,7 +164,7 @@ export function OrdersView({ me }: { me: ShellEmployee }) {
             <>
               <ul className="space-y-2 md:hidden">
                 {orders.map((o) => (
-                  <li key={o.id}>
+                  <li key={o.id} className="space-y-1">
                     <button
                       type="button"
                       onClick={() => setOpenId(o.id)}
@@ -175,6 +188,9 @@ export function OrdersView({ me }: { me: ShellEmployee }) {
                       </span>
                       <OrderNotes order={o} compact />
                     </button>
+                    {o.status === "pending_payment" && (
+                      <QuickApprove busy={quickBusy === o.id} onApprove={() => void quickApprove(o)} className="w-full" />
+                    )}
                   </li>
                 ))}
               </ul>
@@ -189,6 +205,7 @@ export function OrdersView({ me }: { me: ShellEmployee }) {
                       <th className="p-3 font-medium">{T.delivery}/{T.pickup}</th>
                       <th className="p-3 font-medium">{T.total}</th>
                       <th className="p-3 font-medium">סטטוס</th>
+                      <th className="p-3" />
                     </tr>
                   </thead>
                   <tbody>
@@ -212,6 +229,11 @@ export function OrdersView({ me }: { me: ShellEmployee }) {
                         <td className="p-3">
                           <StatusBadge status={o.status} />
                         </td>
+                        <td className="p-3 text-left" onClick={(e) => e.stopPropagation()}>
+                          {o.status === "pending_payment" && (
+                            <QuickApprove busy={quickBusy === o.id} onApprove={() => void quickApprove(o)} />
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -231,7 +253,7 @@ export function OrdersView({ me }: { me: ShellEmployee }) {
           order={open}
           onClose={() => setOpenId(null)}
           onAction={runAction}
-          onDelete={canManageTeam(me) ? deleteOrder : undefined}
+          onDelete={canManageTeam(me) || hasRole(me, "ops_manager") ? deleteOrder : undefined}
         />
       )}
     </div>
@@ -551,5 +573,14 @@ function OrderSheet({
         onCancel={() => setConfirmCancel(false)}
       />
     </>
+  );
+}
+
+function QuickApprove({ busy, onApprove, className }: { busy: boolean; onApprove: () => void; className?: string }) {
+  return (
+    <Button size="sm" className={cn("h-10", className)} disabled={busy} onClick={onApprove}>
+      <CreditCard className="h-4 w-4" aria-hidden="true" />
+      {busy ? T.saving : OPS.approvePayment}
+    </Button>
   );
 }
