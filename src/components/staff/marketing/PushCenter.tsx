@@ -12,6 +12,7 @@ import { useToast } from "@/components/ui/toaster";
 import { T } from "@/lib/staff/labels";
 import { ML } from "@/lib/staff/marketing/labels";
 import { Card, ErrorState, Loading, Notice, StatCard, api, formatDateTime } from "./ui";
+import { PushReminders } from "./PushReminders";
 
 type Status = { configured: boolean; subscribers: number; lastSentAt: string | null };
 
@@ -28,6 +29,7 @@ export function PushCenter({ configured }: { configured: boolean }) {
         </Notice>
       )}
       <PushSection configured={configured} />
+      <PushReminders />
       <BannerSection />
     </div>
   );
