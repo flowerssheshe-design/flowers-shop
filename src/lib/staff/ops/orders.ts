@@ -8,19 +8,22 @@ import type { OrderItem, OrderStatus, OrderType, OrdersSummary, StaffOrder } fro
 export const ORDER_COLUMNS =
   "id, created_at, status, order_type, customer_name, customer_phone, delivery_address, delivery_type, fulfillment_type, delivery_fee, total_amount, items, notes, greeting_note, payment_method, is_member, stall_id, approved_by, inventory_deducted";
 
-export type OrderAction = "approve" | "complete" | "cancel";
+export type OrderAction = "approve" | "unapprove" | "complete" | "cancel";
 
 export const ORDER_STATUSES: OrderStatus[] = ["pending_payment", "approved", "completed", "cancelled", "archived"];
 export const ORDER_TYPES: OrderType[] = ["preorder", "live", "stall", "manual"];
 
 const ACTION_TARGET: Record<OrderAction, OrderStatus> = {
   approve: "approved",
+  // "ביטול אישור": an approval pressed by mistake goes back to waiting for payment.
+  unapprove: "pending_payment",
   complete: "completed",
   cancel: "cancelled",
 };
 
 const ACTION_FROM: Record<OrderAction, OrderStatus[]> = {
   approve: ["pending_payment"],
+  unapprove: ["approved"],
   complete: ["pending_payment", "approved"],
   cancel: ["pending_payment", "approved", "completed"],
 };

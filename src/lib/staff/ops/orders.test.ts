@@ -5,7 +5,8 @@ import { resolveWeek } from "./week-range";
 describe("order actions", () => {
   it("allows only sensible transitions", () => {
     expect(actionsFor("pending_payment")).toEqual(["approve", "complete", "cancel"]);
-    expect(actionsFor("approved")).toEqual(["complete", "cancel"]);
+    expect(actionsFor("approved")).toEqual(["unapprove", "complete", "cancel"]);
+    expect(canApplyAction("unapprove", "pending_payment")).toBe(false);
     expect(actionsFor("completed")).toEqual(["cancel"]);
     expect(actionsFor("cancelled")).toEqual([]);
     expect(actionsFor("archived")).toEqual([]);

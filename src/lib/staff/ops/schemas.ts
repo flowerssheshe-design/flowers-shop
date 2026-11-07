@@ -107,7 +107,7 @@ export const CourierSchema = z.object({
 export const CopyWeekSchema = z.object({ week: isoDate });
 
 export const OrderActionSchema = z.object({
-  action: z.enum(["approve", "complete", "cancel"]),
+  action: z.enum(["approve", "unapprove", "complete", "cancel"]),
 });
 
 export const InventoryUpdateSchema = z.object({

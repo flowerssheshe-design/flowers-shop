@@ -55,6 +55,7 @@ export async function PATCH(req: Request, ctx: { params: { id: string } }) {
     if (newStatus === "approved" || (newStatus === "completed" && !before.approved_by)) {
       update.approved_by = me.id;
     }
+    if (action === "unapprove") update.approved_by = null;
 
     const pickupStallId = (before.pickup_stall_id as string | null | undefined) ?? null;
     const stallDeducted = before.stall_stock_deducted === true;

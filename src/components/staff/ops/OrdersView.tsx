@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Bike, CheckCircle2, CreditCard, Gift, MapPin, MessageCircle, Phone, Search, ShoppingBag, StickyNote, Trash2, XCircle } from "lucide-react";
+import { Bike, CheckCircle2, CreditCard, Gift, MapPin, MessageCircle, Phone, Search, ShoppingBag, StickyNote, Trash2, Undo2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -39,6 +39,7 @@ function StatusBadge({ status }: { status: string }) {
 
 const ACTION_LABEL: Record<OrderAction, string> = {
   approve: OPS.approvePayment,
+  unapprove: "ביטול אישור",
   complete: OPS.markCompleted,
   cancel: OPS.cancelOrder,
 };
@@ -76,10 +77,10 @@ export function OrdersView({ me }: { me: ShellEmployee }) {
 
   // "אישור תשלום" right from the list, without opening each order.
   const [quickBusy, setQuickBusy] = React.useState<string | null>(null);
-  async function quickApprove(o: StaffOrder) {
+  async function quickApprove(o: StaffOrder, action: OrderAction = "approve") {
     setQuickBusy(o.id);
     try {
-      await runAction(o, "approve");
+      await runAction(o, action);
     } catch (e) {
       toast({ title: e instanceof Error ? e.message : T.saveError, variant: "error" });
     } finally {
@@ -91,7 +92,14 @@ export function OrdersView({ me }: { me: ShellEmployee }) {
     const res = await opsFetch<{ order: StaffOrder }>(`/api/staff/orders/${o.id}`, { method: "PATCH", body: { action } });
     replaceOrder(res.order);
     toast({
-      title: action === "approve" ? "התשלום אושר" : action === "complete" ? "ההזמנה סומנה כהושלמה" : "ההזמנה בוטלה",
+      title:
+        action === "approve"
+          ? "התשלום אושר"
+          : action === "unapprove"
+            ? "האישור בוטל. ההזמנה ממתינה שוב לתשלום."
+            : action === "complete"
+              ? "ההזמנה סומנה כהושלמה"
+              : "ההזמנה בוטלה",
       variant: "success",
     });
   }
@@ -191,6 +199,9 @@ export function OrdersView({ me }: { me: ShellEmployee }) {
                     {o.status === "pending_payment" && (
                       <QuickApprove busy={quickBusy === o.id} onApprove={() => void quickApprove(o)} className="w-full" />
                     )}
+                    {o.status === "approved" && o.order_type !== "stall" && (
+                      <QuickApprove undo busy={quickBusy === o.id} onApprove={() => void quickApprove(o, "unapprove")} className="w-full" />
+                    )}
                   </li>
                 ))}
               </ul>
@@ -232,6 +243,9 @@ export function OrdersView({ me }: { me: ShellEmployee }) {
                         <td className="p-3 text-left" onClick={(e) => e.stopPropagation()}>
                           {o.status === "pending_payment" && (
                             <QuickApprove busy={quickBusy === o.id} onApprove={() => void quickApprove(o)} />
+                          )}
+                          {o.status === "approved" && o.order_type !== "stall" && (
+                            <QuickApprove undo busy={quickBusy === o.id} onApprove={() => void quickApprove(o, "unapprove")} />
                           )}
                         </td>
                       </tr>
@@ -417,6 +431,12 @@ function OrderSheet({
                   {OPS.cancelOrder}
                 </Button>
               )}
+              {actions.includes("unapprove") && o.order_type !== "stall" && (
+                <Button variant="outline" className="h-11 sm:h-10" disabled={!!busy} onClick={() => act("unapprove")}>
+                  <Undo2 className="h-4 w-4" aria-hidden="true" />
+                  {busy === "unapprove" ? T.saving : ACTION_LABEL.unapprove}
+                </Button>
+              )}
               {actions.includes("complete") && (
                 <Button
                   variant={actions.includes("approve") ? "outline" : "default"}
@@ -576,11 +596,22 @@ function OrderSheet({
   );
 }
 
-function QuickApprove({ busy, onApprove, className }: { busy: boolean; onApprove: () => void; className?: string }) {
+function QuickApprove({
+  busy,
+  onApprove,
+  className,
+  undo,
+}: {
+  busy: boolean;
+  onApprove: () => void;
+  className?: string;
+  /** "ביטול אישור" instead of "אישור תשלום". */
+  undo?: boolean;
+}) {
   return (
-    <Button size="sm" className={cn("h-10", className)} disabled={busy} onClick={onApprove}>
-      <CreditCard className="h-4 w-4" aria-hidden="true" />
-      {busy ? T.saving : OPS.approvePayment}
+    <Button size="sm" variant={undo ? "outline" : "default"} className={cn("h-10", className)} disabled={busy} onClick={onApprove}>
+      {undo ? <Undo2 className="h-4 w-4" aria-hidden="true" /> : <CreditCard className="h-4 w-4" aria-hidden="true" />}
+      {busy ? T.saving : undo ? "ביטול אישור" : OPS.approvePayment}
     </Button>
   );
 }
