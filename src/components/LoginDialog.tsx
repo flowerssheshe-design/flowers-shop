@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { askPushOnSignup } from "@/components/staff/marketing/PushPrompt";
 import Link from "next/link";
 import { Bell, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -56,6 +57,11 @@ export function LoginDialog({
     e.preventDefault();
     setSubmitting(true);
     setError(null);
+    // Agreed to messages at sign-up: ask for browser notifications in the same click.
+    let signedUp: (ok: boolean) => void = () => undefined;
+    if (mode === "register" && optIn) {
+      askPushOnSignup(new Promise<boolean>((resolve) => (signedUp = resolve)));
+    }
     try {
       const url =
         mode === "login" ? "/api/auth/login" : "/api/auth/register";
@@ -78,9 +84,11 @@ export function LoginDialog({
           (data as { error?: string }).error ?? "שגיאה באימות המשתמש",
         );
       }
+      signedUp(true);
       onSuccess?.();
       onOpenChange(false);
     } catch (e) {
+      signedUp(false);
       setError(e instanceof Error ? e.message : "שגיאה");
     } finally {
       setSubmitting(false);

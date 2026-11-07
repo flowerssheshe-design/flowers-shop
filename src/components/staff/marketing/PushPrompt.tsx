@@ -42,6 +42,26 @@ function isStandalone(): boolean {
   );
 }
 
+/**
+ * Right after sign-up with "אישור קבלת הודעות ועדכונים": ask the browser for
+ * notification permission. Must start inside the click (browsers allow the
+ * permission window only from a user action), so the permission is asked at
+ * once and the subscription is saved when `afterSignup` resolves. Never throws.
+ */
+export function askPushOnSignup(afterSignup: Promise<boolean>): void {
+  try {
+    if (!VAPID_KEY || !pushSupported() || Notification.permission === "denied") return;
+    // iPhone: push works only from the Home Screen app; the regular prompt explains that.
+    if (isIosDevice(navigator.userAgent, navigator.maxTouchPoints) && !isStandalone()) return;
+    const permission = Notification.permission === "granted" ? Promise.resolve("granted" as NotificationPermission) : Notification.requestPermission();
+    void Promise.all([permission, afterSignup])
+      .then(([p, ok]) => (p === "granted" && ok ? subscribe() : false))
+      .catch(() => false);
+  } catch {
+    // no notifications on this browser
+  }
+}
+
 async function subscribe(): Promise<boolean> {
   const reg = await navigator.serviceWorker.register("/sw.js");
   await navigator.serviceWorker.ready;
