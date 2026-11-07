@@ -35,7 +35,12 @@ export async function GET(req: Request) {
       canSell: canSellNow(),
       stalls: stalls.map((s) => ({ id: s.id, name: s.name, location: s.location ?? null })),
       // With a Bit group link the stall shows its QR (customers pay into the group).
-      bit: { number: settings.stall_bit_number ?? "", qr_url: settings.stall_bit_qr_url ?? "", group_url: settings.bit_group_url ?? "" },
+      // The stall's own Bit number, else the website's (shown under the group QR as a backup).
+      bit: {
+        number: (settings.stall_bit_number || settings.bit_number || "").trim(),
+        qr_url: settings.stall_bit_qr_url ?? "",
+        group_url: settings.bit_group_url ?? "",
+      },
     };
     if (!stall) return NextResponse.json({ ...base, stall: null });
 

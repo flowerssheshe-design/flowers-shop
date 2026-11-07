@@ -60,17 +60,19 @@ export function BitPayModal({
 
   if (!open) return null;
 
-  // The group (when set) wins over the number and the uploaded QR picture.
-  const number = group ? "" : bitNumber.trim();
+  // The group (when set) wins over the uploaded QR picture; the Bit number is
+  // still shown under it, in case the group doesn't work.
+  const number = bitNumber.trim();
   const qr = group ? groupQr ?? "" : qrUrl;
-  let link: string | null = group || null;
-  if (!group && number) {
+  let numberLink: string | null = null;
+  if (number) {
     try {
-      link = buildBitLink(number, amount, `פרחים – ${stallName}`);
+      numberLink = buildBitLink(number, amount, `פרחים – ${stallName}`);
     } catch {
-      link = null;
+      numberLink = null;
     }
   }
+  const link: string | null = group || numberLink;
   const showNumber = number && !/^(https?|bit):\/\//.test(number);
 
   return (
@@ -107,25 +109,30 @@ export function BitPayModal({
           </>
         ) : null}
 
-        {showNumber && (
-          <div>
-            <p className="text-base text-gray-600">{W.bitNumber}</p>
-            <p className="text-4xl font-bold tracking-wider" dir="ltr">
-              {number}
-            </p>
-          </div>
-        )}
-
-        {!group && !number && !qrUrl && <p className="max-w-xs text-base text-red-700">{W.bitNotSet}</p>}
-
         {link && (
           <a
             href={link}
             className="inline-flex h-14 w-full max-w-xs items-center justify-center rounded-lg bg-[#00c2c9] px-6 text-lg font-bold text-white"
           >
-            {W.bitOpenApp}
+            {group ? "פתיחת קבוצת הביט" : W.bitOpenApp}
           </a>
         )}
+
+        {showNumber && (
+          <div className={group ? "w-full max-w-xs rounded-lg border border-gray-200 p-3" : undefined}>
+            <p className="text-base text-gray-600">{group ? "הקבוצה לא עובדת? אפשר לשלם למספר:" : W.bitNumber}</p>
+            <p className={group ? "text-3xl font-bold tracking-wider" : "text-4xl font-bold tracking-wider"} dir="ltr">
+              {number}
+            </p>
+            {group && numberLink && (
+              <a href={numberLink} className="mt-2 inline-block text-base font-medium text-[#008f94] underline">
+                פתיחת ביט למספר הזה
+              </a>
+            )}
+          </div>
+        )}
+
+        {!group && !number && !qrUrl && <p className="max-w-xs text-base text-red-700">{W.bitNotSet}</p>}
       </div>
     </div>
   );
