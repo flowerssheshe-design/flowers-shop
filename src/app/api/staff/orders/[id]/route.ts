@@ -49,7 +49,12 @@ export async function PATCH(req: Request, ctx: { params: { id: string } }) {
     const items = normalizeItems(before.items);
     const wasDeducted = before.inventory_deducted === true;
     const isRealtime = isRealtimeMode(await getStoreMode());
-    const plan = planStockChange({ oldStatus, newStatus, wasDeducted, isRealtime, itemCount: items.length });
+    // "ביטול אישור" keeps the bouquets held for the customer: a live order holds its
+    // stock from the moment it is placed, also while waiting for payment.
+    const plan =
+      action === "unapprove"
+        ? { deduct: false, restore: false }
+        : planStockChange({ oldStatus, newStatus, wasDeducted, isRealtime, itemCount: items.length });
 
     const update: Record<string, unknown> = { status: newStatus };
     if (newStatus === "approved" || (newStatus === "completed" && !before.approved_by)) {
