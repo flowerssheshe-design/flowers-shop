@@ -1,5 +1,6 @@
 "use client";
 
+import { NotificationToggle } from "@/components/staff/marketing/PushPrompt";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -339,6 +340,10 @@ export function ProfileView({
               <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
             )}
           </label>
+          {/* Browser notifications on this device: turn on / off. */}
+          <div className="mt-3 rounded-xl border border-primary/15 bg-cream/40 p-3">
+            <NotificationToggle />
+          </div>
         </section>
 
         {/* Order history */}

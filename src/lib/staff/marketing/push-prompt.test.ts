@@ -27,6 +27,8 @@ describe("push prompt", () => {
     expect(promptMode({ ...base, dismissedAt: String(base.now - 1000) })).toBe("hidden");
     expect(promptMode({ ...base, dismissedAt: String(base.now - PROMPT_SNOOZE_MS - 1) })).toBe("ask");
     expect(isSnoozed("garbage", base.now)).toBe(false);
+    // "אל תשאלו אותי שוב"
+    expect(isSnoozed("never", base.now)).toBe(true);
   });
   it("explains Add to Home Screen on iOS Safari when not installed", () => {
     expect(promptMode({ ...base, ios: true, standalone: false, pushSupported: false })).toBe("ios_install");

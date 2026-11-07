@@ -15,6 +15,8 @@ export function isPromptPath(pathname: string | null | undefined): boolean {
 }
 
 export function isSnoozed(dismissedAt: string | null | undefined, now: number = Date.now()): boolean {
+  // "אל תשאלו אותי שוב"
+  if (dismissedAt === "never") return true;
   const t = Number(dismissedAt);
   return Number.isFinite(t) && t > 0 && now - t < PROMPT_SNOOZE_MS;
 }
