@@ -4,7 +4,7 @@ import { requireStaff } from "@/lib/staff/guard";
 import { getStoreMode, isRealtimeMode } from "@/lib/storeMode";
 import { T } from "@/lib/staff/labels";
 import { OrderActionSchema } from "@/lib/staff/ops/schemas";
-import { ORDER_COLUMNS, canApplyAction, normalizeItems, normalizeOrder, planStockChange, targetStatus } from "@/lib/staff/ops/orders";
+import { ORDER_COLUMNS, canApplyAction, normalizeItems, normalizeOrder, planStockChange, refundDueFor, targetStatus } from "@/lib/staff/ops/orders";
 import { returnOrderStock, takeOrderStock } from "@/lib/staff/ops/stall-split-server";
 import { UUID_RE, jsonError, notConfigured, parseBody, serverError } from "@/lib/staff/ops/http";
 
@@ -61,6 +61,16 @@ export async function PATCH(req: Request, ctx: { params: { id: string } }) {
       update.approved_by = me.id;
     }
     if (action === "unapprove") update.approved_by = null;
+    // A paid order (Bit / PayBox) that is cancelled waits for the money to be sent back by hand.
+    const refundDue =
+      action === "cancel"
+        ? refundDueFor({
+            status: oldStatus,
+            payment_method: (before.payment_method as string | null) ?? null,
+            total_amount: Number(before.total_amount) || 0,
+          })
+        : null;
+    if (refundDue !== null) update.refund_due = refundDue;
 
     const pickupStallId = (before.pickup_stall_id as string | null | undefined) ?? null;
     const stallDeducted = before.stall_stock_deducted === true;
@@ -78,13 +88,14 @@ export async function PATCH(req: Request, ctx: { params: { id: string } }) {
     }
 
     // Only update if nobody changed the status meanwhile.
-    const { data, error } = await admin
-      .from("orders")
-      .update(update)
-      .eq("id", id)
-      .eq("status", oldStatus)
-      .select(ORDER_COLUMNS)
-      .maybeSingle();
+    const write = (patch: Record<string, unknown>) =>
+      admin.from("orders").update(patch).eq("id", id).eq("status", oldStatus).select(ORDER_COLUMNS).maybeSingle();
+    let { data, error } = await write(update);
+    if (error && /refund_due/.test(error.message)) {
+      // Before migration 050: cancel without the refund mark.
+      delete update.refund_due;
+      ({ data, error } = await write(update));
+    }
     if (error || !data) {
       if (plan.deduct) await returnOrderStock(admin, items, { pickupStallId, stallDeducted: tookFromStall });
       if (error) return serverError(error, "order PATCH update");

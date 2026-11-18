@@ -1,15 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, MapPin, Truck, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toaster";
-import { cn } from "@/lib/utils";
+import { cn, formatILS } from "@/lib/utils";
 import { T } from "@/lib/staff/labels";
 import { W } from "@/lib/staff/work/labels";
 import { api, useStaffData } from "@/lib/staff/work/client";
-import { validateDistribution, type DistributionProduct } from "@/lib/staff/work/distribution";
-import { QtyStepper } from "./QtyStepper";
 import { SupplyReceipts, type ReceiptLine } from "./SupplyReceipts";
 import { Card, EmptyBlock, ErrorBlock, LoadingBlock, NoticeBlock, RefreshButton } from "./common";
 
@@ -18,8 +16,6 @@ type SupplyData = {
   friday?: string;
   /** Owners and ops managers: link to the stock page, where the split is set. */
   canManage?: boolean;
-  /** Owners and ops managers save the distribution; others only see it. */
-  canDistribute?: boolean;
   week: { start: string; end: string; phase: string };
   source: "supplier" | "forecast";
   lines: (ReceiptLine & { picked_up: boolean })[];
@@ -29,7 +25,7 @@ type SupplyData = {
   distributedToday: Record<string, Record<string, number>>;
 };
 
-type Tab = "pickup" | "receipts" | "distribute";
+type Tab = "pickup" | "receipts" | "stalls";
 
 function forecastKey(weekStart: string) {
   return `staff.supply.forecast-picked.${weekStart}`;
@@ -46,16 +42,23 @@ function readForecastPicked(weekStart: string): Set<string> {
 
 function PickupList({ data, onChanged }: { data: SupplyData; onChanged: () => void }) {
   const { toast } = useToast();
-  const [busy, setBusy] = useState<string | null>(null);
   const [localPicked, setLocalPicked] = useState<Set<string>>(new Set());
   const [optimistic, setOptimistic] = useState<Record<string, boolean>>({});
+  // Saves still on their way, per bouquet; each bouquet's saves run in order.
+  const inflight = useRef(new Map<string, number>());
+  const chains = useRef(new Map<string, Promise<void>>());
   const isForecast = data.source === "forecast";
 
   useEffect(() => {
     if (isForecast) setLocalPicked(readForecastPicked(data.week.start));
   }, [isForecast, data.week.start]);
 
-  useEffect(() => setOptimistic({}), [data.lines]);
+  // Fresh data from the server: it wins, except for a bouquet still being saved
+  // (otherwise its check would jump back until its own save finishes).
+  useEffect(
+    () => setOptimistic((o) => Object.fromEntries(Object.entries(o).filter(([id]) => (inflight.current.get(id) ?? 0) > 0))),
+    [data.lines],
+  );
 
   const isPicked = (l: SupplyData["lines"][number]) =>
     isForecast ? localPicked.has(l.product_id) : (optimistic[l.product_id] ?? l.picked_up);
@@ -74,21 +77,37 @@ function PickupList({ data, onChanged }: { data: SupplyData; onChanged: () => vo
       }
       return;
     }
-    setBusy(l.product_id);
-    setOptimistic((o) => ({ ...o, [l.product_id]: next }));
-    try {
-      await api("/api/staff/supply/lines", { method: "PATCH", json: { product_id: l.product_id, picked_up: next } });
-      onChanged();
-    } catch (e) {
-      setOptimistic((o) => ({ ...o, [l.product_id]: !next }));
-      toast({ title: e instanceof Error ? e.message : T.saveError, variant: "error" });
-    } finally {
-      setBusy(null);
-    }
+    const id = l.product_id;
+    setOptimistic((o) => ({ ...o, [id]: next }));
+    inflight.current.set(id, (inflight.current.get(id) ?? 0) + 1);
+    const run = (chains.current.get(id) ?? Promise.resolve()).then(async () => {
+      try {
+        await api("/api/staff/supply/lines", { method: "PATCH", json: { product_id: id, picked_up: next } });
+      } catch (e) {
+        // Show what the server has for this bouquet again.
+        setOptimistic((o) => {
+          const rest = { ...o };
+          delete rest[id];
+          return rest;
+        });
+        toast({ title: e instanceof Error ? e.message : T.saveError, variant: "error" });
+      } finally {
+        inflight.current.set(id, (inflight.current.get(id) ?? 1) - 1);
+        // Reload once, after the last save, so no check jumps back meanwhile.
+        if (Array.from(inflight.current.values()).every((n) => n <= 0)) onChanged();
+      }
+    });
+    chains.current.set(id, run);
+    await run;
   }
 
   const pickedCount = data.lines.filter(isPicked).length;
   const totalUnits = data.lines.reduce((s, l) => s + l.qty, 0);
+  // What is paid per bouquet: what the manager wrote, else the bouquet's cost price.
+  const priceOf = (l: SupplyData["lines"][number]) => (l.unit_cost ?? l.cost_price ?? 0);
+  // Paid for: what came (once a manager wrote it), without the free ones.
+  const paidOf = (l: SupplyData["lines"][number]) => Math.max(0, (l.received_qty ?? l.qty) - (l.free_qty ?? 0));
+  const totalToPay = data.lines.reduce((s, l) => s + paidOf(l) * priceOf(l), 0);
 
   return (
     <Card
@@ -106,7 +125,6 @@ function PickupList({ data, onChanged }: { data: SupplyData; onChanged: () => vo
                 <button
                   type="button"
                   onClick={() => void toggle(l)}
-                  disabled={busy === l.product_id}
                   aria-pressed={on}
                   className={cn(
                     "flex min-h-[56px] w-full items-center gap-3 rounded-lg border px-3 text-start",
@@ -122,8 +140,16 @@ function PickupList({ data, onChanged }: { data: SupplyData; onChanged: () => vo
                   >
                     {on && <Check className="h-5 w-5" />}
                   </span>
-                  <span className={cn("min-w-0 flex-1 text-base", on && "line-through opacity-70")}>{l.title}</span>
-                  <span className="text-xl font-bold tabular-nums">{l.qty}</span>
+                  <span className={cn("min-w-0 flex-1", on && "line-through opacity-70")}>
+                    <span className="block text-base">{l.title}</span>
+                    {priceOf(l) > 0 && (
+                      <span className="block text-sm text-muted-foreground">
+                        {formatILS(priceOf(l))} לזר · {formatILS(paidOf(l) * priceOf(l))}
+                      </span>
+                    )}
+                    {(l.free_qty ?? 0) > 0 && <span className="block text-sm text-primary">{l.free_qty} בחינם</span>}
+                  </span>
+                  <span className="text-2xl font-bold tabular-nums">{l.qty}</span>
                   <span className="sr-only">{on ? W.pickedUp : ""}</span>
                 </button>
               </li>
@@ -131,165 +157,13 @@ function PickupList({ data, onChanged }: { data: SupplyData; onChanged: () => vo
           })}
         </ul>
       )}
+      {data.lines.length > 0 && totalToPay > 0 && (
+        <div className="mt-3 flex min-h-[56px] items-center justify-between rounded-lg bg-primary/10 px-3 font-bold">
+          <span className="text-lg">סה״כ לתשלום לספק</span>
+          <span className="text-2xl tabular-nums">{formatILS(totalToPay)}</span>
+        </div>
+      )}
     </Card>
-  );
-}
-
-function Distribution({ data, onSaved }: { data: SupplyData; onSaved: () => void }) {
-  const { toast } = useToast();
-  const [stallId, setStallId] = useState<string | null>(data.stalls[0]?.id ?? null);
-  const [qty, setQty] = useState<Record<string, number>>({});
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (!stallId || !data.stalls.some((s) => s.id === stallId)) setStallId(data.stalls[0]?.id ?? null);
-  }, [data.stalls, stallId]);
-
-  const productMap = useMemo(
-    () => new Map<string, DistributionProduct>(data.products.map((p) => [p.id, { id: p.id, title: p.title, stock: p.stock }])),
-    [data.products],
-  );
-  const titleOf = useMemo(() => new Map(data.products.map((p) => [p.id, p.title])), [data.products]);
-
-  if (data.stalls.length === 0) return <EmptyBlock text={W.noActiveStalls} />;
-  const stall = data.stalls.find((s) => s.id === stallId) ?? data.stalls[0];
-  const people = data.scheduled[stall.id] ?? [];
-  const already = data.distributedToday[stall.id] ?? {};
-  const entries = Object.entries(qty).filter(([, n]) => n > 0);
-
-  async function save() {
-    const checked = validateDistribution(
-      entries.map(([product_id, n]) => ({ product_id, qty: n })),
-      productMap,
-    );
-    if (!checked.ok) {
-      toast({ title: checked.error, variant: "error" });
-      return;
-    }
-    const lines = checked.items.map((i) => `${i.title}: ${i.qty}`).join("\n");
-    if (!window.confirm(`לשמור חלוקה ל"${stall.name}"?\n${lines}`)) return;
-    setSaving(true);
-    try {
-      await api("/api/staff/supply/distribute", {
-        method: "POST",
-        json: { stall_id: stall.id, items: checked.items.map((i) => ({ product_id: i.product_id, qty: i.qty })) },
-      });
-      toast({ title: W.distributeSaved, variant: "success" });
-      setQty({});
-      onSaved();
-    } catch (e) {
-      toast({ title: e instanceof Error ? e.message : T.saveError, variant: "error" });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div className="space-y-4">
-      <Card title={W.distribution} description={W.distributionDesc}>
-        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={W.chooseStall}>
-          {data.stalls.map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              role="radio"
-              aria-checked={s.id === stall.id}
-              onClick={() => {
-                setStallId(s.id);
-                setQty({});
-              }}
-              className={cn(
-                "min-h-[48px] rounded-lg border px-4 text-base font-medium",
-                s.id === stall.id ? "border-primary bg-primary text-primary-foreground" : "bg-background",
-              )}
-            >
-              {s.name}
-            </button>
-          ))}
-        </div>
-
-        <div className="mt-3 rounded-lg bg-muted p-3 text-sm">
-          <p className="flex items-center gap-1.5 font-medium">
-            <Users className="h-4 w-4" aria-hidden="true" />
-            {W.scheduledToday}
-          </p>
-          {people.length === 0 ? (
-            <p className="mt-1 text-muted-foreground">{W.nobodyScheduled}</p>
-          ) : (
-            <ul className="mt-1 space-y-0.5">
-              {people.map((p, i) => (
-                <li key={i}>
-                  {p.name}{" "}
-                  <span className="text-muted-foreground" dir="ltr">
-                    {p.start_time}–{p.end_time}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        <div className="mt-3 text-sm">
-          <p className="font-medium">
-            {W.distributedToday} – {stall.name}
-          </p>
-          {Object.keys(already).length === 0 ? (
-            <p className="text-muted-foreground">{W.nothingDistributed}</p>
-          ) : (
-            <p className="text-muted-foreground">
-              {Object.entries(already)
-                .map(([pid, n]) => `${titleOf.get(pid) ?? ""} ${n}`)
-                .join(" · ")}
-            </p>
-          )}
-        </div>
-      </Card>
-
-      <Card title={T.products}>
-        {data.products.length === 0 ? (
-          <EmptyBlock text="אין זרים פעילים" />
-        ) : (
-          <ul className="divide-y">
-            {data.products.map((p) => {
-              const stock = p.stock ?? 0;
-              const n = qty[p.id] ?? 0;
-              return (
-                <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 py-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium">{p.title}</p>
-                    <p className={cn("text-xs", stock === 0 ? "text-destructive" : "text-muted-foreground")}>
-                      {W.generalStock}: {stock}
-                    </p>
-                  </div>
-                  <QtyStepper
-                    value={n}
-                    onChange={(v) => setQty((q) => ({ ...q, [p.id]: v }))}
-                    min={0}
-                    max={stock}
-                    label={`${W.qty} – ${p.title}`}
-                  />
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </Card>
-
-      <div className="sticky bottom-4 z-10">
-        <Button
-          className="h-14 w-full text-base shadow-lg"
-          onClick={() => void save()}
-          disabled={saving || entries.length === 0}
-        >
-          <Truck className="h-5 w-5" aria-hidden="true" />
-          {saving
-            ? "שומר…"
-            : entries.length === 0
-              ? W.nothingToDistribute
-              : `${W.distributeSave} (${entries.reduce((s, [, v]) => s + v, 0)})`}
-        </Button>
-      </div>
-    </div>
   );
 }
 
@@ -310,8 +184,8 @@ function DistributionReadOnly({ data }: { data: SupplyData }) {
   return (
     <div className="space-y-4">
       {data.canManage && (
-        <a href="/staff/inventory" className="block rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm font-medium text-primary">
-          את החלוקה לדוכנים משנים בדף המלאי ←
+        <a href="/staff/stalls" className="block rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm font-medium text-primary">
+          את החלוקה לדוכנים משנים בניהול דוכנים ←
         </a>
       )}
       {!decided && <NoticeBlock text="עוד לא נקבע כמה זרים יוצאים לכל דוכן בשישי" icon={<Truck className="h-8 w-8 text-muted-foreground" aria-hidden="true" />} />}
@@ -379,9 +253,9 @@ export function SupplyView() {
         <div className="grid flex-1 grid-cols-3 gap-1 rounded-lg bg-muted p-1" role="tablist">
           {(
             [
-              ["pickup", W.pickupList],
+              ["pickup", "מה לקחת מהספק"],
               ["receipts", "מה הגיע"],
-              ["distribute", W.distribution],
+              ["stalls", "כמה לכל דוכן"],
             ] as [Tab, string][]
           ).map(([key, label]) => (
             <button
@@ -408,10 +282,9 @@ export function SupplyView() {
           lines={data.lines}
           products={data.products}
           isForecast={data.source === "forecast"}
+          canFixOrders={Boolean(data.canManage)}
           onChanged={() => void reload(true)}
         />
-      ) : data.canDistribute ? (
-        <Distribution data={data} onSaved={() => void reload(true)} />
       ) : (
         <DistributionReadOnly data={data} />
       )}

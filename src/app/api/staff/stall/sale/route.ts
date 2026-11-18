@@ -13,7 +13,6 @@ import {
   stallAdjust,
   workContext,
 } from "@/lib/staff/work/server";
-import { lockStallsIfDue } from "@/lib/staff/ops/stall-split-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -51,7 +50,6 @@ export async function POST(req: Request) {
   try {
     const { admin, today, now } = await workContext();
     if (!canSellNow(now)) return jsonError(SALES_CLOSED, 409);
-    await lockStallsIfDue(admin);
     const stall = await checkStall(admin, me, today, stall_id);
     if (!stall) return jsonError(NO_STALL_ACCESS, 403);
 

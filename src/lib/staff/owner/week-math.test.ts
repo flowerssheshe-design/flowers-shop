@@ -4,6 +4,7 @@ import {
   buildDashboard,
   computeWeekFinance,
   orderChannel,
+  stallWebsiteOrders,
   weekWindow,
   type DashboardInput,
   type OrderRow,
@@ -170,5 +171,44 @@ describe("computeWeekFinance", () => {
     expect(f.supplierCostBasis).toBe("order");
     expect(f.supplierCost).toBe(200);
     expect(f.netProfit).toBe(100 - 200 - 10);
+  });
+
+  it("free bouquets from the supplier are not paid for", () => {
+    const f = computeWeekFinance({
+      weekStart: "2026-11-01",
+      orders: [],
+      products: [{ id: ROSE, title: "ורדים", cost_price: 40 }],
+      expenses: [],
+      payroll: 0,
+      supplierLines: [{ product_id: ROSE, preorder_qty: 0, extra_qty: 5, final_qty: 5, received_qty: 7, free_qty: 2, unit_cost: 30 }],
+      supplierOrdered: true,
+    });
+    expect(f.supplierCost).toBe(5 * 30);
+  });
+});
+
+describe("stallWebsiteOrders", () => {
+  const w = (o: Partial<OrderRow> & { id: string }): OrderRow => ({
+    created_at: "2026-11-20T08:00:00Z",
+    status: "approved",
+    order_type: "preorder",
+    total_amount: 50,
+    items: [{ productId: "p", qty: 1, price: 50 }],
+    pickup_stall_id: "s1",
+    ...o,
+  });
+  it("counts this stall's website orders, picked up, sent and waiting", () => {
+    const r = stallWebsiteOrders(
+      [
+        w({ id: "1", items: [{ productId: "p", qty: 2, price: 50 }] }),
+        w({ id: "2", status: "completed" }),
+        w({ id: "3", fulfillment_type: "delivery", delivered_at: "2026-11-20T09:00:00Z" }),
+        w({ id: "4", status: "cancelled" }),
+        w({ id: "5", pickup_stall_id: "s2" }),
+        w({ id: "6", order_type: "stall", stall_id: "s1" }),
+      ],
+      "s1",
+    );
+    expect(r).toEqual({ orders: 3, bouquets: 4, pickedUp: 1, sent: 1, waiting: 1 });
   });
 });

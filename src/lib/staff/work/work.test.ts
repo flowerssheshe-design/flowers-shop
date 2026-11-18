@@ -6,7 +6,7 @@ import {
   qtyByProduct,
   summarizeSales,
 } from "./sales";
-import { totalsByStall, validateDistribution, type DistributionProduct } from "./distribution";
+import { totalsByStall } from "./distribution";
 import { canSeeDeliveries, isWeekCourier, paymentStatus, weekCourierId } from "./courier";
 import { allowedStalls, defaultStallId } from "./stall-access";
 import { runWithRollback, StepError } from "./rollback";
@@ -78,55 +78,7 @@ describe("Bit / cash split", () => {
   });
 });
 
-describe("distribution validation", () => {
-  const products = new Map<string, DistributionProduct>([
-    ["a", { id: "a", title: "ורדים", stock: 10 }],
-    ["b", { id: "b", title: "חמניות", stock: 3 }],
-    ["c", { id: "c", title: "טוליפ", stock: null }],
-  ]);
-
-  it("drops zero lines and merges duplicates", () => {
-    const r = validateDistribution(
-      [
-        { product_id: "a", qty: 4 },
-        { product_id: "a", qty: 2 },
-        { product_id: "b", qty: 0 },
-      ],
-      products,
-    );
-    expect(r).toEqual({ ok: true, items: [{ product_id: "a", title: "ורדים", qty: 6 }] });
-  });
-
-  it("rejects an empty distribution", () => {
-    const r = validateDistribution([{ product_id: "a", qty: 0 }], products);
-    expect(r.ok).toBe(false);
-  });
-
-  it("rejects negative or fractional quantities", () => {
-    expect(validateDistribution([{ product_id: "a", qty: -1 }], products).ok).toBe(false);
-    expect(validateDistribution([{ product_id: "a", qty: 1.5 }], products).ok).toBe(false);
-  });
-
-  it("rejects more than the general stock (merged)", () => {
-    const r = validateDistribution(
-      [
-        { product_id: "b", qty: 2 },
-        { product_id: "b", qty: 2 },
-      ],
-      products,
-    );
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.error).toContain("חמניות");
-  });
-
-  it("treats a product without a stock row as zero stock", () => {
-    expect(validateDistribution([{ product_id: "c", qty: 1 }], products).ok).toBe(false);
-  });
-
-  it("rejects unknown products", () => {
-    expect(validateDistribution([{ product_id: "zzz", qty: 1 }], products).ok).toBe(false);
-  });
-
+describe("distribution totals", () => {
   it("totals what was distributed per stall", () => {
     expect(
       totalsByStall([

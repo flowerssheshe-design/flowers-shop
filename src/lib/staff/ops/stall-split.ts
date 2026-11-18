@@ -15,12 +15,19 @@
 // bouquets from there, so a delivery order comes off that stall exactly like
 // a pickup order (the order keeps the stall in pickup_stall_id).
 //
-// On Thursday evening the split is locked: every stall gets a fixed stock that
-// no longer moves between stalls. From then on a pickup order, a stall sale or
+// The managers save the split in one go: how many of the free bouquets each
+// stall gets, on top of the orders taken from it (stored in stall_plan with the
+// orders included, so a later pickup order comes off its own stall). Until a
+// split is saved, the free stock is split equally ("percent" with no percents).
+//
+// A manager locks the split by hand (nothing locks by itself): every stall
+// gets a fixed stock that no longer moves between stalls. From then on a pickup order, a stall sale or
 // a write-off comes off that stall only (and off the general stock).
 //
 // A stall with nothing left of a bouquet can't be picked for it. A bouquet with
 // nothing left anywhere (pickup points and delivery) is sold out.
+
+import { israelDate, israelWeekday } from "@/lib/staff/week";
 
 export type SplitMode = "count" | "percent";
 
@@ -30,7 +37,7 @@ export function parseSplitMode(v: unknown): SplitMode {
   return v === "count" ? "count" : "percent";
 }
 
-/** The stalls are locked on Thursday at this Israel time (day 4 = Thursday). */
+/** From Thursday at this Israel time (day 4 = Thursday) the managers are reminded to lock. Nothing locks by itself. */
 export const STALL_LOCK_DAY = 4;
 export const STALL_LOCK_MINUTES = 20 * 60;
 
@@ -200,6 +207,140 @@ export function deliveryStallFor(
   const ids = stalls.filter((s) => s.is_delivery_point).map((s) => s.id);
   if (ids.length === 0) return undefined;
   return ids.filter((id) => !closedForOrders.has(id)).find((id) => !shortItem(split, items, id)) ?? null;
+}
+
+export type StallOpenState = {
+  id: string;
+  is_open: boolean;
+  is_pickup_point: boolean;
+  is_delivery_point?: boolean;
+  /** When the stall was last opened (null before migration 049, or never). */
+  opened_at?: string | null;
+};
+
+/**
+ * Friday: a stall that opened today and is closed again is done for the day
+ * and takes no more website orders. A stall that hasn't opened yet still
+ * does. When every pickup / delivery stall is done, nothing can be ordered.
+ * Any other day the stalls being closed changes nothing.
+ */
+export function stallsDoneForTheDay(stalls: StallOpenState[], now: Date = new Date()): { closed: Set<string>; noOrders: boolean } {
+  if (israelWeekday(now) !== 5) return { closed: new Set(), noOrders: false };
+  const today = israelDate(now);
+  const done = (s: StallOpenState) => !s.is_open && Boolean(s.opened_at) && israelDate(new Date(s.opened_at!)) === today;
+  const closed = new Set(stalls.filter(done).map((s) => s.id));
+  const points = stalls.filter((s) => s.is_pickup_point || s.is_delivery_point);
+  return { closed, noOrders: points.length > 0 && points.every((s) => closed.has(s.id)) };
+}
+
+/** How many free bouquets each stall gets, orders not included: productId → stallId → qty. */
+export type Distribution = Record<string, Record<string, number>>;
+
+/** The quick split: each bouquet's free stock split equally between the stalls. */
+export function equalDistribution(stallIds: string[], products: { id: string; live: number }[]): Distribution {
+  const out: Distribution = {};
+  for (const p of products) {
+    const parts = splitByWeights(p.live, stallIds.map(() => 1));
+    out[p.id] = Object.fromEntries(stallIds.map((id, i) => [id, parts[i]]));
+  }
+  return out;
+}
+
+/**
+ * A split to save: whole numbers, active stalls, and never more of a bouquet
+ * than is free. Errors are Hebrew, ready to show.
+ */
+export function checkDistribution(
+  dist: Distribution,
+  products: { id: string; title: string; live: number }[],
+  stallIds: string[],
+): string | null {
+  const stalls = new Set(stallIds);
+  const byId = new Map(products.map((p) => [p.id, p]));
+  for (const [pid, row] of Object.entries(dist)) {
+    const p = byId.get(pid);
+    if (!p) return "אחד הזרים לא נמצא. רעננו את הדף ונסו שוב.";
+    let sum = 0;
+    for (const [sid, qty] of Object.entries(row)) {
+      if (!stalls.has(sid)) return "אחד הדוכנים כבר לא פעיל. רעננו את הדף ונסו שוב.";
+      if (!Number.isInteger(qty) || qty < 0) return `הכמות של "${p.title}" צריכה להיות מספר שלם, 0 או יותר`;
+      sum += qty;
+    }
+    if (sum > p.live) return `ב"${p.title}" חולקו ${sum}, אבל יש לחלוקה רק ${p.live}.`;
+  }
+  return null;
+}
+
+/** The stall_plan rows for a split: each stall's share plus the orders already taken from it. */
+export function planRows(dist: Distribution, pickups: StallQty): { stall_id: string; product_id: string; qty: number }[] {
+  const rows: { stall_id: string; product_id: string; qty: number }[] = [];
+  for (const [pid, row] of Object.entries(dist)) {
+    for (const [sid, qty] of Object.entries(row)) rows.push({ stall_id: sid, product_id: pid, qty: qty + qtyOf(pickups, sid, pid) });
+  }
+  return rows;
+}
+
+export type StallMove = { stall_id: string; product_id: string; delta: number };
+
+/**
+ * After the lock: the changes a manager made to the stalls' stock, as moves
+ * relative to what they saw (so a sale made meanwhile is never lost). A stall
+ * can only get more from what no stall holds. Removals come first.
+ */
+export function lockedMoves(
+  seen: Distribution,
+  want: Distribution,
+  products: { id: string; title: string; undistributed: number }[],
+): { ok: true; moves: StallMove[] } | { ok: false; error: string } {
+  const byId = new Map(products.map((p) => [p.id, p]));
+  const moves: StallMove[] = [];
+  for (const [pid, row] of Object.entries(want)) {
+    const p = byId.get(pid);
+    if (!p) return { ok: false, error: "אחד הזרים לא נמצא. רעננו את הדף ונסו שוב." };
+    let added = 0;
+    for (const [sid, qty] of Object.entries(row)) {
+      const delta = qty - (seen[pid]?.[sid] ?? 0);
+      if (delta !== 0) moves.push({ stall_id: sid, product_id: pid, delta });
+      added += delta;
+    }
+    if (added > p.undistributed) {
+      return { ok: false, error: `ב"${p.title}" נוספו לדוכנים ${added}, אבל מחוץ לדוכנים יש רק ${p.undistributed}.` };
+    }
+  }
+  moves.sort((a, b) => a.delta - b.delta);
+  return { ok: true, moves };
+}
+
+/**
+ * After the lock, fewer of a bouquet arrived than the stock counts on: what
+ * comes off which stall. First from what no stall holds, then one at a time
+ * from the stall that has the most, so the stalls stay even. If the stalls
+ * don't hold enough, `short` is what still could not be taken.
+ */
+export function shortageCuts(
+  stallFree: Record<string, number>,
+  undistributed: number,
+  shortBy: number,
+): { cuts: { stall_id: string; delta: number }[]; short: number } {
+  let left = Math.max(0, shortBy - Math.max(0, undistributed));
+  const have = new Map(Object.entries(stallFree).map(([id, n]) => [id, Math.max(0, n)]));
+  const taken = new Map<string, number>();
+  while (left > 0) {
+    let best: string | null = null;
+    for (const [id, n] of Array.from(have.entries())) if (n > 0 && (best === null || n > have.get(best)!)) best = id;
+    if (best === null) break;
+    have.set(best, have.get(best)! - 1);
+    taken.set(best, (taken.get(best) ?? 0) + 1);
+    left -= 1;
+  }
+  return { cuts: Array.from(taken.entries()).map(([stall_id, n]) => ({ stall_id, delta: -n })), short: left };
+}
+
+/** Free bouquets must be part of what arrived. */
+export function checkFreeQty(received: number, free: number): string | null {
+  if (!Number.isInteger(free) || free < 0) return "כמה בחינם צריך להיות מספר שלם, 0 או יותר";
+  if (free > received) return `בחינם (${free}) לא יכול להיות יותר ממה שהגיע (${received})`;
+  return null;
 }
 
 /** Percents must be whole-ish numbers between 0 and 100 that add up to at most 100. */

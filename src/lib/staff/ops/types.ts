@@ -113,6 +113,11 @@ export type StaffOrder = {
   approved_by: string | null;
   approved_by_name: string | null;
   inventory_deducted: boolean;
+  /** Where the customer picks up (or the courier takes a delivery from). */
+  pickup_stall_id: string | null;
+  /** A cancelled paid order: the amount to send back by hand (null = nothing to send back). */
+  refund_due: number | null;
+  refunded_at: string | null;
 };
 
 export type OrdersSummary = {

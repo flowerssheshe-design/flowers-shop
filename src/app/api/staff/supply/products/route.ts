@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireStaff } from "@/lib/staff/guard";
 import { jsonError, parseBody, workContext } from "@/lib/staff/work/server";
-import { resetSplitAfterDelivery } from "@/lib/staff/ops/stall-split-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,7 +22,8 @@ const Body = z.object({
  * on (and adds a picture) on the products page.
  */
 export async function POST(req: Request) {
-  const guard = await requireStaff("supply");
+  // The supply runner, and the managers (who write what arrived, from stall management).
+  const guard = await requireStaff(["supply", "stalls"]);
   if (!guard.ok) return guard.response;
   const body = await parseBody(req, Body);
   if (!body.ok) return body.response;
@@ -75,9 +75,8 @@ export async function POST(req: Request) {
         { onConflict: "week_start,product_id" },
       );
     }
-    // A new bouquet after the Thursday lock isn't in any stall: cancel the split, tell the managers.
-    const splitReset = qty > 0 ? await resetSplitAfterDelivery(admin, `הגיע זר חדש מהספק: "${v.title}" (${qty}).`) : false;
-    return NextResponse.json({ product, splitReset }, { status: 201 });
+    // After the lock a new bouquet is in no stall yet: the managers give it to the stalls in the split table.
+    return NextResponse.json({ product }, { status: 201 });
   } catch (e) {
     console.error("staff/supply/products failed:", e);
     return jsonError("שגיאת שרת. נסו שוב.", 500);

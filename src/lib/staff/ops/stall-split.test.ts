@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkPercents, computeSplit, deliveryStallFor, shortItem, splitByWeights, type SplitInput, type StallQty } from "./stall-split";
+import { checkDistribution, checkPercents, computeSplit, equalDistribution, planRows, stallsDoneForTheDay, lockedMoves, shortageCuts, checkFreeQty, deliveryStallFor, shortItem, splitByWeights, type SplitInput, type StallQty } from "./stall-split";
 
 const q = (o: Record<string, Record<string, number>>): StallQty =>
   new Map(Object.entries(o).map(([s, m]) => [s, new Map(Object.entries(m))]));
@@ -156,5 +156,115 @@ describe("Friday: closed stalls", () => {
     const s = computeSplit(base({ stalls, closedForOrders: new Set(["a", "b"]), noOrders: true })).get("rose")!;
     expect(s.orderable).toBe(0);
     expect(s.deliveryFree).toBe(0);
+  });
+});
+
+describe("saving a split", () => {
+  it("quick split: each bouquet's free stock equally between the stalls", () => {
+    expect(equalDistribution(["a", "b"], [{ id: "rose", live: 28 }])).toEqual({ rose: { a: 14, b: 14 } });
+    expect(equalDistribution(["a", "b", "c"], [{ id: "rose", live: 10 }])).toEqual({ rose: { a: 4, b: 3, c: 3 } });
+  });
+
+  it("30 from the supplier, 2 ordered at a: 28 are split, a gets its 2 orders on top", () => {
+    const rows = planRows({ rose: { a: 14, b: 14 } }, q({ a: { rose: 2 } }));
+    expect(rows).toEqual([
+      { stall_id: "a", product_id: "rose", qty: 16 },
+      { stall_id: "b", product_id: "rose", qty: 14 },
+    ]);
+    // Read back: each stall can sell its share, the orders wait at a.
+    const s = computeSplit(base({ mode: "count", live: new Map([["rose", 28]]), plan: q({ a: { rose: 16 }, b: { rose: 14 } }), pickups: q({ a: { rose: 2 } }) })).get("rose")!;
+    expect(s.stallFree).toEqual({ a: 14, b: 14 });
+    expect(s.pickups).toEqual({ a: 2, b: 0 });
+  });
+
+  it("never more than is free", () => {
+    const products = [{ id: "rose", title: "ורד", live: 28 }];
+    expect(checkDistribution({ rose: { a: 14, b: 14 } }, products, ["a", "b"])).toBeNull();
+    expect(checkDistribution({ rose: { a: 15, b: 14 } }, products, ["a", "b"])).toContain("28");
+    expect(checkDistribution({ rose: { x: 1 } }, products, ["a", "b"])).not.toBeNull();
+    expect(checkDistribution({ rose: { a: 1.5 } }, products, ["a", "b"])).not.toBeNull();
+  });
+});
+
+describe("Friday: stalls that opened and closed again", () => {
+  // 2026-11-13 is a Friday; 12:00 UTC = 14:00 Israel.
+  const friday = new Date("2026-11-13T12:00:00Z");
+  const morning = "2026-11-13T05:00:00Z";
+  const s = (id: string, is_open: boolean, opened_at: string | null, pickup = true, delivery = false) => ({
+    id,
+    is_open,
+    opened_at,
+    is_pickup_point: pickup,
+    is_delivery_point: delivery,
+  });
+
+  it("before a stall opens, it still takes orders", () => {
+    expect(stallsDoneForTheDay([s("a", false, null), s("b", false, "2026-11-06T05:00:00Z")], friday)).toEqual({ closed: new Set(), noOrders: false });
+  });
+
+  it("open now: takes orders", () => {
+    expect(stallsDoneForTheDay([s("a", true, morning)], friday).noOrders).toBe(false);
+  });
+
+  it("opened and closed today: no more orders there; the other pickup stall still takes them", () => {
+    const r = stallsDoneForTheDay([s("a", false, morning), s("b", true, morning)], friday);
+    expect(r.closed).toEqual(new Set(["a"]));
+    expect(r.noOrders).toBe(false);
+  });
+
+  it("every pickup / delivery stall opened and closed: nothing can be ordered", () => {
+    const r = stallsDoneForTheDay([s("a", false, morning), s("b", false, morning, false, true), s("c", false, null, false, false)], friday);
+    expect(r.noOrders).toBe(true);
+  });
+
+  it("any other day, closed changes nothing", () => {
+    expect(stallsDoneForTheDay([s("a", false, "2026-11-12T05:00:00Z")], new Date("2026-11-12T12:00:00Z"))).toEqual({ closed: new Set(), noOrders: false });
+  });
+});
+
+describe("after the lock: moving bouquets between stalls", () => {
+  const products = [{ id: "rose", title: "ורד", undistributed: 2 }];
+
+  it("applies only the changes, removals first", () => {
+    const r = lockedMoves({ rose: { a: 10, b: 10 } }, { rose: { a: 7, b: 13 } }, products);
+    expect(r).toEqual({ ok: true, moves: [
+      { stall_id: "a", product_id: "rose", delta: -3 },
+      { stall_id: "b", product_id: "rose", delta: 3 },
+    ] });
+  });
+
+  it("can add from what no stall holds, but not more", () => {
+    expect(lockedMoves({ rose: { a: 10 } }, { rose: { a: 12 } }, products).ok).toBe(true);
+    const r = lockedMoves({ rose: { a: 10 } }, { rose: { a: 13 } }, products);
+    expect(r.ok).toBe(false);
+  });
+
+  it("nothing changed: no moves", () => {
+    expect(lockedMoves({ rose: { a: 10 } }, { rose: { a: 10 } }, products)).toEqual({ ok: true, moves: [] });
+  });
+});
+
+describe("fewer arrived after the lock", () => {
+  it("takes from what no stall holds first", () => {
+    expect(shortageCuts({ a: 5, b: 5 }, 3, 2)).toEqual({ cuts: [], short: 0 });
+  });
+
+  it("then from the stall that has the most, keeping them even", () => {
+    const r = shortageCuts({ a: 6, b: 3 }, 1, 5); // 4 to take: a 6→2, b stays 3
+    expect(r.short).toBe(0);
+    expect(Object.fromEntries(r.cuts.map((c) => [c.stall_id, c.delta]))).toEqual({ a: -4 });
+  });
+
+  it("says how many could not be taken (held by orders)", () => {
+    expect(shortageCuts({ a: 1 }, 0, 4)).toEqual({ cuts: [{ stall_id: "a", delta: -1 }], short: 3 });
+  });
+});
+
+describe("free bouquets", () => {
+  it("must be part of what arrived", () => {
+    expect(checkFreeQty(10, 3)).toBeNull();
+    expect(checkFreeQty(10, 10)).toBeNull();
+    expect(checkFreeQty(2, 3)).toMatch(/לא יכול/);
+    expect(checkFreeQty(5, -1)).not.toBeNull();
   });
 });

@@ -13,12 +13,12 @@ export const revalidate = 0;
 
 /**
  * Supplier pickup list for the current week (the real supplier order lines,
- * or a forecast from pre-orders when there are none yet), plus what the
- * morning distribution needs: stalls, who works there today, general stock
- * and what was already distributed today.
+ * or a forecast from pre-orders when there are none yet), with what each
+ * bouquet costs, plus how many go to each stall and who works there.
  */
 export async function GET() {
-  const guard = await requireStaff("supply");
+  // The supply runner, and the managers (who write what arrived, from stall management).
+  const guard = await requireStaff(["supply", "stalls"]);
   if (!guard.ok) return guard.response;
 
   try {
@@ -64,7 +64,7 @@ export async function GET() {
     const stockBy = new Map((invRes.data ?? []).map((r) => [String(r.product_id), Number(r.live_stock_count) || 0]));
 
     let source: "supplier" | "forecast" = "supplier";
-    type LineRow = { product_id: string; final_qty: number; picked_up?: boolean; received_qty?: number | null; unit_cost?: number | null };
+    type LineRow = { product_id: string; final_qty: number; picked_up?: boolean; received_qty?: number | null; unit_cost?: number | null; free_qty?: number | null };
     let lines: {
       product_id: string;
       title: string;
@@ -72,6 +72,7 @@ export async function GET() {
       picked_up: boolean;
       received_qty?: number | null;
       unit_cost?: number | null;
+      free_qty?: number;
       cost_price?: number;
     }[] = ((linesRes.data ?? []) as LineRow[])
       .filter((l) => Number(l.final_qty) > 0 || (l.received_qty ?? 0) > 0)
@@ -82,6 +83,7 @@ export async function GET() {
         picked_up: l.picked_up === true,
         received_qty: l.received_qty ?? null,
         unit_cost: l.unit_cost === null || l.unit_cost === undefined ? null : Number(l.unit_cost),
+        free_qty: Number(l.free_qty) || 0,
         cost_price: costs.get(String(l.product_id)) ?? 0,
       }))
       .sort((a, b) => a.title.localeCompare(b.title, "he"));
@@ -135,10 +137,7 @@ export async function GET() {
     }
 
     return NextResponse.json({
-
-      // Managers save the distribution; everybody else gets a read-only view.
-      // The split is set on the stock page; here everyone sees it. Managers get a link there.
-      canDistribute: false,
+      // The split is set in stall management; here everyone sees it. Managers get a link there.
       canManage: canDecideDistribution(guard.session.employee),
       friday,
       week: { start: week.weekStart, end: week.weekEnd, phase: week.phase },

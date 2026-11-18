@@ -45,7 +45,7 @@ export const OT = {
   supplier: {
     title: "הזמנה מהספק",
     description: "כמה להזמין מכל זר, והמלאי שיישאר למכירה בלייב",
-    preordered: "הוזמן מראש",
+    preordered: "הוזמן באתר",
     extra: "תוספת",
     final: "להזמין",
     live: "לבלייב",

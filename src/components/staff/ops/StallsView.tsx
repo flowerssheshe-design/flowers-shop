@@ -17,6 +17,7 @@ import { Collapsible, ConfirmDialog, EmptyBlock, ErrorBlock, Field, FormError, F
 import { CourierCard, FridayBar, StallFridayStaff, SupplyCard, useFriday } from "./FridayPanel";
 import { BudgetPanel } from "./BudgetPanel";
 import { StallSplitPanel } from "./StallSplitPanel";
+import { SupplyReceiptsPanel } from "./SupplyReceiptsPanel";
 
 type StallsResponse = { today: string; stalls: StallWithToday[]; equipment: EquipmentItem[] };
 
@@ -28,14 +29,17 @@ export function StallsView({ me }: { me: ShellEmployee }) {
   const [pickupBusy, setPickupBusy] = React.useState<string | null>(null);
 
   async function toggleFlag(s: StallWithToday, field: "is_pickup_point" | "is_delivery_point", on: boolean) {
+    const flip = (v: boolean) => setData((d) => (d ? { ...d, stalls: d.stalls.map((x) => (x.id === s.id ? { ...x, [field]: v } : x)) } : d));
+    // The switch moves right away; it goes back only if the save fails.
+    flip(on);
     setPickupBusy(s.id);
     try {
       await opsFetch(`/api/staff/stalls/${s.id}`, { method: "PATCH", body: { [field]: on } });
-      setData((d) => (d ? { ...d, stalls: d.stalls.map((x) => (x.id === s.id ? { ...x, [field]: on } : x)) } : d));
       setSplitKey((k) => k + 1);
       const what = field === "is_pickup_point" ? "נקודת איסוף" : "נקודת משלוחים";
       toast({ title: on ? `${s.name}: ${what}` : `${s.name}: כבר לא ${what}`, variant: "success" });
     } catch (e) {
+      flip(!on);
       toast({ title: e instanceof Error ? e.message : T.saveError, variant: "error" });
     } finally {
       setPickupBusy(null);
@@ -166,6 +170,8 @@ export function StallsView({ me }: { me: ShellEmployee }) {
               ))}
             </ul>
           )}
+
+          <SupplyReceiptsPanel onChanged={() => setSplitKey((k) => k + 1)} />
 
           <StallSplitPanel key={splitKey} onChanged={reload} />
 

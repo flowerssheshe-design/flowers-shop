@@ -14,6 +14,7 @@ import { orderTypeForMode } from "@/lib/staff/owner/store-mode";
 import { TRACKING_COOKIE, resolveTrackingLinkId } from "@/lib/staff/owner/tracking";
 import { loadStallSplit, takeOrderStock, type StallSplitState } from "@/lib/staff/ops/stall-split-server";
 import { deliveryStallFor, shortItem } from "@/lib/staff/ops/stall-split";
+import { notifyStallOfNewOrder } from "@/lib/staff/work/new-order-push";
 import { israelWeekday } from "@/lib/staff/week";
 import type { Order } from "@/types";
 
@@ -192,14 +193,14 @@ export async function POST(req: Request) {
     console.error("Order stall split load failed (falling back to general stock):", e);
   }
   if (split?.noOrders) {
-    return NextResponse.json({ error: "כל הדוכנים סגורים כרגע, ולכן אי אפשר להזמין עכשיו." }, { status: 409 });
+    return NextResponse.json({ error: "הדוכנים נסגרו להיום, ולכן לא ניתן להזמין כרגע." }, { status: 409 });
   }
   const configuredPickup = (split?.stalls ?? []).filter((s) => s.is_pickup_point);
   const pickupPoints = configuredPickup.filter((s) => !split?.closedForOrders.has(s.id));
   let pickupStallId: string | null = null;
   if (body.delivery_type === "pickup" && configuredPickup.length > 0) {
     if (pickupPoints.length === 0) {
-      return NextResponse.json({ error: "כרגע אין דוכן פתוח לאיסוף. אפשר לבחור משלוח." }, { status: 409 });
+      return NextResponse.json({ error: "דוכני האיסוף נסגרו להיום. אפשר לבחור משלוח." }, { status: 409 });
     }
     const chosen = pickupPoints.find((s) => s.id === body.pickup_stall_id);
     if (!chosen) {
@@ -350,6 +351,23 @@ export async function POST(req: Request) {
 
   // Fire-and-forget; the automations cron catches anything this misses.
   void sendOrderThanks(orderData.id);
+
+  // Friday, stall open: the sellers there get "new order, set it aside" on their phone.
+  // Awaited briefly (a serverless function may stop right after the answer), never fails the order.
+  try {
+    await Promise.race([
+      notifyStallOfNewOrder(createAdminClient(), {
+        stallId: sourceStallId,
+        customerName: body.customer_name,
+        items: priced.items.map((i) => ({ title: i.title, qty: i.qty })),
+        delivery: (body.fulfillment_type ?? body.delivery_type) === "delivery",
+        paid: status === "approved" && body.payment_method !== "cash",
+      }),
+      new Promise((r) => setTimeout(r, 2500)),
+    ]);
+  } catch (e) {
+    console.error("new order push:", e);
+  }
 
   return NextResponse.json({ order: orderData }, { status: 201 });
 }

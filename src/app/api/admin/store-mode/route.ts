@@ -32,7 +32,13 @@ export async function GET() {
     const [mode, stallRes, openStallsRes] = await Promise.all([
       getStoreMode(),
       admin.from("system_settings").select("value").eq("key", "is_stall_open").single(),
-      admin.from("stalls").select("id", { count: "exact", head: true }).eq("is_open", true).eq("is_active", true),
+      // "The stall is open" only when a stall customers can pick up from is open.
+      admin
+        .from("stalls")
+        .select("id", { count: "exact", head: true })
+        .eq("is_open", true)
+        .eq("is_active", true)
+        .eq("is_pickup_point", true),
     ]);
 
     // The stall sellers open and close their stalls from the staff stall

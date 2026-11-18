@@ -63,7 +63,11 @@ function rolesOf(employee: Pick<PayEmployee, "role" | "roles">): string[] {
   return roles.includes(employee.role) ? roles : [employee.role, ...roles];
 }
 
-/** Owners are never paid through the system, whatever else they hold. */
+/**
+ * Owners have no pay settings in the system (no rate, responsibility pay or
+ * one-off payments). The one exception: money they get from the week's stall
+ * budget when they work a stall or as the courier.
+ */
 export function isOwnerEmployee(employee: Pick<PayEmployee, "role" | "roles">): boolean {
   return rolesOf(employee).includes("owner");
 }
@@ -123,11 +127,11 @@ export function computeEarnings(
   let ratePay = 0;
   let fromBudget = 0;
   let fromResponsibility = 0;
+  // Deliveries are courier work, paid from the budget (owners too, when they work it).
+  fromBudget = Math.max(0, Number(allocation) || 0);
   if (!isOwnerEmployee(employee)) {
     if (employee.pay_type === "hourly") ratePay = rateShifts.reduce((sum, s) => sum + shiftHours(s), 0) * rate;
     else if (employee.pay_type === "per_shift") ratePay = rateShifts.length * rate;
-    // Deliveries are courier work, paid from the budget.
-    fromBudget = Math.max(0, Number(allocation) || 0);
     fromResponsibility = weeklyResponsibilityPay(employee) * Math.max(0, Math.floor(Number(responsibilityWeeks) || 0));
   }
   return {

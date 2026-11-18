@@ -20,7 +20,8 @@ const Body = z.object({
 
 /** The stall seller opens and closes the stall; the storefront shows it as open. */
 export async function POST(req: Request) {
-  const guard = await requireStaff("stall");
+  // The settings load alongside the login check: one round trip less.
+  const [guard, ctx] = await Promise.all([requireStaff("stall"), workContext().catch(() => null)]);
   if (!guard.ok) return guard.response;
   const me = guard.session.employee;
 
@@ -29,16 +30,21 @@ export async function POST(req: Request) {
   const { stall_id, is_open } = body.data;
 
   try {
-    const { admin, today } = await workContext();
-    const stall = await checkStall(admin, me, today, stall_id);
+    const { admin, today, week } = ctx ?? (await workContext());
+    const stall = await checkStall(admin, me, today, stall_id, week);
     if (!stall) return jsonError(NO_STALL_ACCESS, 403);
 
-    const { data, error } = await admin
-      .from("stalls")
-      .update({ is_open })
-      .eq("id", stall.id)
-      .select("id, is_open")
-      .single();
+    // Opening stamps the time: on Friday a stall that opened and closed again takes no more orders.
+    const update = (withStamp: boolean) =>
+      admin
+        .from("stalls")
+        .update(withStamp ? { is_open, opened_at: new Date().toISOString() } : { is_open })
+        .eq("id", stall.id)
+        .select("id, is_open")
+        .single();
+    let { data, error } = await update(is_open);
+    // Before migration 049 there is no opened_at column.
+    if (error && /opened_at/.test(error.message)) ({ data, error } = await update(false));
     if (error || !data) return jsonError("העדכון נכשל. נסו שוב.", 500);
     return NextResponse.json({ stall: data });
   } catch (e) {

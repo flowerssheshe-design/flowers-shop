@@ -4,7 +4,6 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireStaff } from "@/lib/staff/guard";
 import { getServerSettings } from "@/lib/settings-server";
 import { currentBusinessWeek } from "@/lib/staff/week";
-import { isOwnerEmployee } from "@/lib/staff/payroll";
 import { sundayOf } from "@/lib/staff/pay-context";
 import { isMissingTableError } from "@/lib/staff/owner/data";
 import { jsonError, notConfigured, parseBody, serverError } from "@/lib/staff/ops/http";
@@ -35,7 +34,7 @@ export async function POST(req: Request) {
     const admin = createAdminClient();
     const [target] = await loadPayrollEmployees(admin, v.employee_id);
     if (!target) return jsonError("עובד לא נמצא", 404);
-    if (isOwnerEmployee(target)) return jsonError("מנהלים ראשיים לא מקבלים שכר במערכת.", 400);
+    // Owners can be paid too: only their share of the stall budget reaches them.
     const week = sundayOf(v.week_start);
     if (week > currentBusinessWeek(await getServerSettings()).weekStart) return jsonError("אפשר לשלם עד השבוע הנוכחי.", 400);
 

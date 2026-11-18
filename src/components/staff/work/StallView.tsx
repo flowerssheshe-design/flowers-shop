@@ -12,6 +12,7 @@ import { api, formatTime, useStaffData } from "@/lib/staff/work/client";
 import { BitPayModal } from "./BitPayModal";
 import { ChecklistCard } from "./ChecklistCard";
 import { NewPickupAlert } from "./NewPickupAlert";
+import { StallPushToggle } from "./StallPushToggle";
 import { PickupOrders } from "./PickupOrders";
 import { SaleDialog } from "./SaleDialog";
 import { WriteOffDialog } from "./WriteOffDialog";
@@ -20,6 +21,12 @@ import type { StallData, StallProduct, StallSale } from "./stall-types";
 
 // Often enough that a new pickup order pops up within seconds.
 const POLL_MS = 10_000;
+
+/** "YYYY-MM-DD" (Israel) is a Friday: new-order popups are for Friday only. */
+function isFridayToday(date: string | undefined): boolean {
+  if (!date) return false;
+  return new Date(`${date}T12:00:00Z`).getUTCDay() === 5;
+}
 const STALL_KEY = "staff.stall.selected";
 type Tab = "sell" | "pickup" | "equipment";
 
@@ -48,7 +55,7 @@ export function StallView({ meId }: { meId: string }) {
   }, []);
 
   const url = ready ? `/api/staff/stall${stallId ? `?stall_id=${encodeURIComponent(stallId)}` : ""}` : null;
-  const { data, error, loading, reload } = useStaffData<StallData>(url, POLL_MS);
+  const { data, error, loading, reload, setData } = useStaffData<StallData>(url, POLL_MS);
 
   // The server falls back to the default stall when the stored one is not allowed.
   useEffect(() => {
@@ -86,12 +93,16 @@ export function StallView({ meId }: { meId: string }) {
 
   async function setOpen(open: boolean) {
     if (!data?.stall) return;
+    const id = data.stall.id;
+    const flip = (v: boolean) => setData((d) => (d?.stall && d.stall.id === id ? { ...d, stall: { ...d.stall, is_open: v } } : d));
+    // The switch moves right away; it goes back only if the save fails.
+    flip(open);
     setTogglingOpen(true);
     try {
-      await api("/api/staff/stall/open", { method: "POST", json: { stall_id: data.stall.id, is_open: open } });
+      await api("/api/staff/stall/open", { method: "POST", json: { stall_id: id, is_open: open } });
       toast({ title: open ? "הדוכן פתוח" : "הדוכן נסגר", variant: "success" });
-      void reload(true);
     } catch (e) {
+      flip(!open);
       toast({ title: e instanceof Error ? e.message : T.saveError, variant: "error" });
     } finally {
       setTogglingOpen(false);
@@ -119,7 +130,7 @@ export function StallView({ meId }: { meId: string }) {
 
   return (
     <div className="space-y-4">
-      <NewPickupAlert stallId={stall.id} orders={pickups} />
+      <NewPickupAlert stallId={stall.id} orders={data.newOrders ?? []} active={stall.is_open && isFridayToday(data.today)} />
       {/* Stall picker + Bit */}
       <div className="flex flex-wrap items-center gap-2">
         {data.stalls.length > 1 ? (
@@ -171,6 +182,8 @@ export function StallView({ meId }: { meId: string }) {
           className="scale-125"
         />
       </label>
+
+      <StallPushToggle />
 
       {/* Tabs */}
       <div className="grid grid-cols-3 gap-1 rounded-lg bg-muted p-1" role="tablist">

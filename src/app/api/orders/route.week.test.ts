@@ -24,7 +24,6 @@ let rpc: ReturnType<typeof vi.fn>;
 let links: Record<string, { id: string; is_active: boolean }>;
 
 function makeAdmin() {
-  rpc = vi.fn().mockResolvedValue({ data: 5, error: null });
   return {
     from: (table: string) => {
       if (table === "products") {
@@ -81,6 +80,8 @@ function request() {
 describe("POST /api/orders: order type and tracking link", () => {
   beforeEach(() => {
     inserted = [];
+    // One spy for every admin client the route makes.
+    rpc = vi.fn().mockResolvedValue({ data: 5, error: null });
     links = { [LINK]: { id: LINK, is_active: true } };
     vi.mocked(createAdminClient).mockImplementation(() => makeAdmin() as never);
     vi.mocked(getServerSettings).mockResolvedValue({ ...DEFAULTS });

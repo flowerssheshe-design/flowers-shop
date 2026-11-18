@@ -21,6 +21,8 @@ type Props = {
   stock?: number;
   /** Eagerly preload the cover image (above-the-fold cards only). */
   priority?: boolean;
+  /** Nothing can be ordered right now: "can't order now", not "sold out". */
+  orderingClosed?: boolean;
 };
 
 export function ProductCard({
@@ -31,6 +33,7 @@ export function ProductCard({
   discountPercent: customerDiscountPercent = 0,
   stock = 0,
   priority = false,
+  orderingClosed = false,
 }: Props) {
   // Same rule the server uses in /api/orders (never the stored price_member).
   const discountedPrice = applyDiscount(
@@ -45,7 +48,10 @@ export function ProductCard({
   const { isPreorderPhase: inPreorder } = useCycleTime();
   const { mode } = useStoreMode();
   const isRealtimeMode = mode === "realtime";
-  const isOutOfStock = isRealtimeMode && (stock <= 0 || product.is_available === false);
+  const isSoldOut = isRealtimeMode && (stock <= 0 || product.is_available === false);
+  // Two different notices: sold out (no bouquets left) / can't order right now.
+  const isOutOfStock = isSoldOut || orderingClosed;
+  const blockedLabel = orderingClosed ? "לא ניתן להזמין כרגע" : "אזל מהמלאי";
 
   const [expanded, setExpanded] = useState(false);
   const descRef = useRef<HTMLParagraphElement>(null);
@@ -79,7 +85,7 @@ export function ProductCard({
           <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-sm rounded-2xl">
             <div className="inline-flex items-center gap-2 rounded-full bg-background/95 px-4 py-2 text-center shadow-lg">
               <X className="h-5 w-5 text-destructive" aria-hidden="true" />
-              <span className="text-sm font-semibold text-foreground">אזל מהמלאי</span>
+              <span className="text-sm font-semibold text-foreground">{blockedLabel}</span>
             </div>
           </div>
         )}
@@ -185,7 +191,7 @@ export function ProductCard({
             >
               <ShoppingBag className="h-4 w-4" />
               {isOutOfStock
-                ? "אזל המלאי"
+                ? blockedLabel
                 : isRealtimeMode
                 ? "הוסף לסל"
                 : inPreorder
