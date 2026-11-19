@@ -5,7 +5,6 @@ import { dayRange, weekOrdersRange } from "@/lib/staff/work/ranges";
 import { summarizeSales } from "@/lib/staff/work/sales";
 import { isStallManager } from "@/lib/staff/work/stall-access";
 import { canSellNow, jsonError, stallAccess, workContext } from "@/lib/staff/work/server";
-import { lockStallsIfDue } from "@/lib/staff/ops/stall-split-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,8 +22,7 @@ export async function GET(req: Request) {
 
   try {
     const { admin, settings, week, today } = await workContext();
-    await lockStallsIfDue(admin);
-    const { stalls, defaultId } = await stallAccess(admin, me, today);
+    const { stalls, defaultId } = await stallAccess(admin, me, today, week);
     const requested = new URL(req.url).searchParams.get("stall_id");
     const stall = stalls.find((s) => s.id === requested) ?? stalls.find((s) => s.id === defaultId) ?? null;
 
@@ -92,6 +90,31 @@ export async function GET(req: Request) {
           .order("created_at", { ascending: true }),
       ]);
 
+    // Today's new website orders whose bouquets come from this stall (pickup or
+    // the courier takes them), paid or not: the "set it aside" popup. Before
+    // migration 043 there is no stall on an order: nothing pops up.
+    const freshRes = await admin
+      .from("orders")
+      .select("*")
+      .eq("pickup_stall_id", stall.id)
+      .in("status", ["pending_payment", "approved"])
+      .neq("order_type", "stall")
+      .gte("created_at", day.from)
+      .lt("created_at", day.to)
+      .order("created_at", { ascending: true });
+    const newOrders = freshRes.error
+      ? []
+      : (freshRes.data ?? [])
+          .filter((o) => !isStallSaleOrder(o))
+          .map((o) => ({
+            id: String(o.id),
+            created_at: o.created_at,
+            customer_name: o.customer_name,
+            items: o.items,
+            delivery: (o.fulfillment_type ?? o.delivery_type) === "delivery",
+            paid: o.status === "approved" && o.payment_method !== "cash",
+          }));
+
     const firstError = [productsRes, stockRes, salesRes, writeoffsRes, equipRes, checklistRes, pickupRes].find(
       (r) => r.error,
     );
@@ -132,6 +155,7 @@ export async function GET(req: Request) {
       })),
       equipment: equipRes.data ?? [],
       checklists,
+      newOrders,
       // Orders picked up at this stall (older orders without a stall show at every stall).
       pickupOrders: (pickupRes.data ?? [])
         .filter((o) => !isStallSaleOrder(o))

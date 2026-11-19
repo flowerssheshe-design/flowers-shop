@@ -34,11 +34,13 @@ describe("responsibility pay in computeEarnings", () => {
     expect(computeEarnings(ops({ role: "ops_manager", roles: ["ops_manager", "marketing"] }), [], 0).amount).toBe(500);
   });
 
-  it("never pays owners, even with ops/marketing as well", () => {
+  it("never pays owners a rate or responsibility pay, even with ops/marketing as well; only their budget share", () => {
     const owner = ops({ role: "owner", roles: ["owner", "ops_manager"] });
     const e = computeEarnings(owner, shifts, 0, 100, 4);
-    expect(e.amount).toBe(0);
+    expect(e.amount).toBe(100);
+    expect(e.fromBudget).toBe(100);
     expect(e.fromResponsibility).toBe(0);
+    expect(computeEarnings(owner, shifts, 0, 0, 4).amount).toBe(0);
     expect(weeklyResponsibilityPay(ops({ role: "ops_manager", roles: ["ops_manager", "owner"] }))).toBe(0);
   });
 

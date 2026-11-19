@@ -193,7 +193,7 @@ export function SupplierView() {
           ) : (
             <p className="rounded-xl border bg-card p-4 text-sm text-muted-foreground">
               מועד ההזמנה מהספק: <b className="text-foreground">{fmtDateTime(data.week.supplierOrderAt)}</b>. “{OT.supplier.preordered}”
-              כולל גם הזמנות שממתינות לתשלום. לכל זר בוחרים: <b className="text-foreground">תוספת</b> (מה שהוזמן מראש + עוד) או{" "}
+              כולל גם הזמנות שממתינות לתשלום, וגם הזמנות בלייב שכבר נעשו באתר. לכל זר בוחרים: <b className="text-foreground">תוספת</b> (מה שהוזמן באתר + עוד) או{" "}
               <b className="text-foreground">כמות קבועה</b> (סה״כ שכולל גם הזמנות מראש וגם לייב; מה שלא הוזמן מראש נשאר ללייב). ״שמירה כברירת מחדל״
               שומרת את הבחירה לשבועות הבאים.
               <span className="mt-2 block font-medium text-foreground">
@@ -279,7 +279,7 @@ export function SupplierView() {
                     </div>
                     {r.mode === "total" && r.amount !== null && r.amount < r.preorder_qty && !sent && (
                       <p className="col-span-2 text-xs text-amber-700 md:col-span-6">
-                        הוזמנו מראש {r.preorder_qty}, יותר מ-{r.amount}. מזמינים {r.preorder_qty} כדי לכסות את ההזמנות.
+                        הוזמנו באתר {r.preorder_qty}, יותר מ-{r.amount}. מזמינים {r.preorder_qty} כדי לכסות את ההזמנות.
                       </p>
                     )}
                   </li>
@@ -288,7 +288,7 @@ export function SupplierView() {
               <div className="mt-2 flex flex-wrap justify-between gap-2 border-t pt-3 text-sm font-medium">
                 <span>{T.total}</span>
                 <span className="tabular-nums">
-                  הוזמן מראש {totals.pre} · להזמין {totals.final} · לבלייב {totals.live}
+                  הוזמן באתר {totals.pre} · להזמין {totals.final} · לבלייב {totals.live}
                 </span>
               </div>
               {invalid && <p className="mt-2 text-sm text-destructive">יש כמויות לא תקינות. מספרים שלמים מ-0 ומעלה בלבד.</p>}

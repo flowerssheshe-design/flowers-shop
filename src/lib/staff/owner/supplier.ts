@@ -38,11 +38,18 @@ export type SupplierLine = {
   saved: boolean;
 };
 
-/** Units per product in this week's pre-orders (cancelled orders excluded). */
+/**
+ * Units per product the website's customers ordered this week (cancelled
+ * excluded): pre-orders, and also live orders. A live order made before the
+ * supplier order was sent (the site was switched to live by hand, or the
+ * order was un-sent and sent again) needs a bouquet from this order too, and
+ * at the send the website's stock must not offer it again.
+ */
 export function preorderQuantities(orders: OrderRow[]): Map<string, number> {
   const map = new Map<string, number>();
   for (const o of orders) {
-    if (!isCounted(o) || o.status === "archived" || orderChannel(o) !== "preorder") continue;
+    const ch = orderChannel(o);
+    if (!isCounted(o) || o.status === "archived" || (ch !== "preorder" && ch !== "live")) continue;
     for (const it of orderItems(o)) map.set(it.productId, (map.get(it.productId) ?? 0) + it.qty);
   }
   return map;

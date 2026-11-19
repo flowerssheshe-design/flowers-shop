@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { actionsFor, canApplyAction, filterOrders, normalizeOrder, planStockChange, summarizeOrders } from "./orders";
+import { actionsFor, canApplyAction, filterOrders, normalizeOrder, orderHoldsStock, planStockChange, refundDueFor, summarizeOrders, swapItems } from "./orders";
 import { resolveWeek } from "./week-range";
 
 describe("order actions", () => {
@@ -99,5 +99,33 @@ describe("week param", () => {
     // Saturday 2026-10-31 21:00 Israel (UTC+2) → 19:00Z
     expect(w.from.toISOString()).toBe("2026-10-31T19:00:00.000Z");
     expect(w.to.toISOString()).toBe("2026-11-07T19:00:00.000Z");
+  });
+});
+
+describe("missing bouquet: swap and refund", () => {
+  const items = [
+    { productId: "sun", title: "חמניות", qty: 2, price: 80 },
+    { productId: "rose", title: "ורדים", qty: 1, price: 100 },
+  ];
+
+  it("swaps only the missing bouquet, same qty and price", () => {
+    expect(swapItems(items, "sun", { id: "tulip", title: "צבעונים" })).toEqual([
+      { productId: "tulip", title: "צבעונים", qty: 2, price: 80 },
+      items[1],
+    ]);
+  });
+
+  it("a paid Bit / PayBox order gets a refund; cash or unpaid does not", () => {
+    expect(refundDueFor({ status: "approved", payment_method: "bit", total_amount: 260 })).toBe(260);
+    expect(refundDueFor({ status: "completed", payment_method: "paybox", total_amount: 99.5 })).toBe(99.5);
+    expect(refundDueFor({ status: "pending_payment", payment_method: "bit", total_amount: 260 })).toBeNull();
+    expect(refundDueFor({ status: "approved", payment_method: "cash", total_amount: 260 })).toBeNull();
+  });
+
+  it("a pre-order holds stock once the supplier order went out", () => {
+    expect(orderHoldsStock({ inventory_deducted: false, order_type: "preorder" }, true)).toBe(true);
+    expect(orderHoldsStock({ inventory_deducted: false, order_type: "preorder" }, false)).toBe(false);
+    expect(orderHoldsStock({ inventory_deducted: true, order_type: "live" }, false)).toBe(true);
+    expect(orderHoldsStock({ inventory_deducted: false, order_type: "live" }, true)).toBe(false);
   });
 });

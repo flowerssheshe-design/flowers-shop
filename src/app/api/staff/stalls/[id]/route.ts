@@ -35,7 +35,13 @@ export async function PATCH(req: Request, ctx: { params: { id: string } }) {
       const { data: cur } = await admin.from("stalls").select("is_active").eq("id", id).maybeSingle();
       if (cur && cur.is_active === false) return jsonError("אי אפשר לפתוח דוכן לא פעיל. הפכו אותו לפעיל קודם.", 409);
     }
-    const { data, error } = await admin.from("stalls").update(update).eq("id", id).select(STALL_COLUMNS).maybeSingle();
+    // Opening stamps the time (Friday: opened then closed = no more website orders).
+    const stamped = body.data.is_open === true ? { ...update, opened_at: new Date().toISOString() } : update;
+    let { data, error } = await admin.from("stalls").update(stamped).eq("id", id).select(STALL_COLUMNS).maybeSingle();
+    // Before migration 049 there is no opened_at column.
+    if (error && stamped !== update && /opened_at/.test(error.message)) {
+      ({ data, error } = await admin.from("stalls").update(update).eq("id", id).select(STALL_COLUMNS).maybeSingle());
+    }
     if (error) return serverError(error, "stall PATCH");
     if (!data) return jsonError("הדוכן לא נמצא", 404);
     return NextResponse.json({ stall: data as Stall });

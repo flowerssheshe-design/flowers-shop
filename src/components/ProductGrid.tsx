@@ -10,6 +10,8 @@ type Props = {
   qualifiesForMember: boolean;
   discountPercent?: number;
   stockById?: Record<string, number>;
+  /** Nothing can be ordered right now (a different message from "sold out"). */
+  orderingClosed?: boolean;
 };
 
 export function ProductGrid({
@@ -19,6 +21,7 @@ export function ProductGrid({
   qualifiesForMember,
   discountPercent = 0,
   stockById = {},
+  orderingClosed = false,
 }: Props) {
   if (products.length === 0) {
     return (
@@ -41,6 +44,7 @@ export function ProductGrid({
           discountPercent={discountPercent}
           stock={stockById[p.id] ?? 0}
           priority={i < 3}
+          orderingClosed={orderingClosed}
         />
       ))}
     </div>

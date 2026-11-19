@@ -21,7 +21,19 @@ export async function opsFetch<R>(url: string, init?: { method?: string; body?: 
     }
     throw new Error(data?.error || (init?.method && init.method !== "GET" ? T.saveError : T.loadError));
   }
+  if (init?.method && init.method !== "GET" && isScheduleChange(url)) {
+    window.dispatchEvent(new Event(SCHEDULE_CHANGED_EVENT));
+  }
   return data as R;
+}
+
+/** Fired after any change to the schedule (a shift, the courier, a copied week), on any screen. */
+export const SCHEDULE_CHANGED_EVENT = "staff:schedule-changed";
+
+/** Shifts and the week's courier; not the pay split itself (/schedule/pay). */
+export function isScheduleChange(url: string): boolean {
+  const path = url.split("?")[0];
+  return /^\/api\/staff\/schedule(\/|$)/.test(path) && !path.startsWith("/api/staff/schedule/pay");
 }
 
 export function formatDate(iso: string, opts: Intl.DateTimeFormatOptions = { day: "numeric", month: "numeric" }) {

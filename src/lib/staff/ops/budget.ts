@@ -12,12 +12,14 @@ export type BudgetCandidate = {
 };
 
 /**
- * Who may receive money from the budget: the ops manager and anyone with stall
- * or courier work (whatever their other responsibilities). Never owners.
+ * Who may receive money from the budget: the managers (owners too, when they
+ * work a stall or as the courier) and anyone with stall or courier work
+ * (whatever their other responsibilities). Only those staffed this week get a
+ * share: see `assignedForBudget`.
  */
 export function canReceiveBudget(e: BudgetCandidate): boolean {
-  if (!e.is_active || e.role === "owner") return false;
-  if (e.role === "ops_manager") return true;
+  if (!e.is_active) return false;
+  if (e.role === "owner" || e.role === "ops_manager") return true;
   return e.work_types.some((w) => BUDGET_WORK_TYPES.includes(w));
 }
 

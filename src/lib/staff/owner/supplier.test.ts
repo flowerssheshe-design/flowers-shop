@@ -13,7 +13,7 @@ function o(id: string, items: { productId: string; qty: number }[], extra: Parti
 }
 
 describe("preorderQuantities", () => {
-  it("counts only non-cancelled website pre-orders", () => {
+  it("counts non-cancelled website orders, pre-order and live (not stall sales)", () => {
     const m = preorderQuantities([
       o("1", [{ productId: "a", qty: 2 }, { productId: "b", qty: 1 }]),
       o("2", [{ productId: "a", qty: 3 }], { status: "pending_payment" }),
@@ -21,7 +21,7 @@ describe("preorderQuantities", () => {
       o("4", [{ productId: "a", qty: 9 }], { order_type: "live" }),
       o("5", [{ productId: "a", qty: 9 }], { order_type: "stall" }),
     ]);
-    expect(m.get("a")).toBe(5);
+    expect(m.get("a")).toBe(14);
     expect(m.get("b")).toBe(1);
   });
 });

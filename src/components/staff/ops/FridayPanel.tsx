@@ -28,6 +28,8 @@ export type FridayState = {
   error: string | null;
   loading: boolean;
   reload: () => void;
+  /** Show a change right away, before the server answers (the next load replaces it). */
+  patch: (fn: (d: ScheduleData) => ScheduleData) => void;
   setWeek: (w: string | null) => void;
   friday: string | null;
   fridayShifts: Shift[];
@@ -38,14 +40,15 @@ export type FridayState = {
 export function useFriday(): FridayState {
   const [week, setWeek] = React.useState<string | null>(null);
   const url = `/api/staff/schedule${week ? `?week=${week}` : ""}`;
-  const { data, error, loading, reload } = useOpsData<ScheduleData>(url, (u) => opsFetch(u));
+  const { data, error, loading, reload, setData } = useOpsData<ScheduleData>(url, (u) => opsFetch(u));
+  const patch = React.useCallback((fn: (d: ScheduleData) => ScheduleData) => setData((d) => (d ? fn(d) : d)), [setData]);
   const friday = data ? addDays(data.weekStart, FRIDAY_OFFSET) : null;
   const fridayShifts = React.useMemo(
     () => (data && friday ? data.shifts.filter((s) => s.work_date === friday) : []),
     [data, friday],
   );
   const names = React.useMemo(() => new Map((data?.employees ?? []).map((e) => [e.id, e.full_name])), [data]);
-  return { data, error, loading, reload, setWeek, friday, fridayShifts, names };
+  return { data, error, loading, reload, patch, setWeek, friday, fridayShifts, names };
 }
 
 /** Week picker + where things stand on Friday. */
@@ -190,6 +193,7 @@ export function CourierCard({ f, meId }: { f: FridayState; meId: string }) {
         method: "PUT",
         body: { week: data.weekStart, employee_id: pick || null },
       });
+      f.patch((d) => ({ ...d, courierId: pick || null }));
       toast({ title: pick ? "השליח נקבע" : "השליח הוסר", variant: "success" });
       setOpen(false);
       f.reload();
@@ -334,29 +338,55 @@ function PickDialog({
       return;
     }
     setSaving(true);
+    const keep = new Set(picked);
+    const toRemove = current.filter((s) => !keep.has(s.employee_id));
+    const already = new Set(current.map((s) => s.employee_id));
+    const toAdd = Array.from(keep).filter((id) => !already.has(id));
+    const timesChanged = current.some((s) => hhmm(s.start_time) !== start || hhmm(s.end_time) !== end);
+    const toMove = timesChanged ? current.filter((s) => keep.has(s.employee_id)) : [];
+    // Show the new people at once; the reload after the save brings the real rows.
+    const removed = new Set(toRemove.map((s) => s.id));
+    const moved = new Set(toMove.map((s) => s.id));
+    const friday = f.friday ?? "";
+    f.patch((d) => ({
+      ...d,
+      shifts: [
+        ...d.shifts
+          .filter((s) => !removed.has(s.id))
+          .map((s) => (moved.has(s.id) ? { ...s, start_time: start, end_time: end } : s)),
+        ...toAdd.map((id) => ({
+          id: `new-${type}-${stallId ?? ""}-${id}`,
+          work_date: friday,
+          start_time: start,
+          end_time: end,
+          shift_type: type,
+          stall_id: stallId,
+          employee_id: id,
+          notes: null,
+        })),
+      ],
+    }));
+    onClose();
     try {
-      const keep = new Set(picked);
-      const toRemove = current.filter((s) => !keep.has(s.employee_id));
-      const already = new Set(current.map((s) => s.employee_id));
-      const toAdd = Array.from(keep).filter((id) => !already.has(id));
-      const timesChanged = current.some((s) => hhmm(s.start_time) !== start || hhmm(s.end_time) !== end);
-      for (const s of toRemove) await opsFetch(`/api/staff/schedule/${s.id}`, { method: "DELETE" });
-      for (const id of toAdd) {
-        await opsFetch("/api/staff/schedule", {
-          method: "POST",
-          body: { work_date: f.friday, start_time: start, end_time: end, shift_type: type, stall_id: stallId, employee_id: id },
-        });
-      }
-      if (timesChanged) {
-        for (const s of current.filter((s) => keep.has(s.employee_id))) {
-          await opsFetch(`/api/staff/schedule/${s.id}`, {
+      // All at once: removing, adding and moving different shifts don't depend on each other.
+      const results = await Promise.allSettled([
+        ...toRemove.map((s) => opsFetch(`/api/staff/schedule/${s.id}`, { method: "DELETE" })),
+        ...toAdd.map((id) =>
+          opsFetch("/api/staff/schedule", {
+            method: "POST",
+            body: { work_date: f.friday, start_time: start, end_time: end, shift_type: type, stall_id: stallId, employee_id: id },
+          }),
+        ),
+        ...toMove.map((s) =>
+          opsFetch(`/api/staff/schedule/${s.id}`, {
             method: "PATCH",
             body: { work_date: s.work_date, start_time: start, end_time: end, shift_type: type, stall_id: stallId, employee_id: s.employee_id, notes: s.notes },
-          });
-        }
-      }
+          }),
+        ),
+      ]);
+      const failed = results.find((r): r is PromiseRejectedResult => r.status === "rejected");
+      if (failed) throw failed.reason;
       toast({ title: T.saved, variant: "success" });
-      onClose();
     } catch (e) {
       toast({ title: e instanceof Error ? e.message : T.saveError, variant: "error" });
     } finally {

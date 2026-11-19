@@ -1,7 +1,7 @@
 import "server-only";
 import type { createAdminClient } from "@/lib/supabase/admin";
 import { getServerSettings } from "@/lib/settings-server";
-import { addDays, currentBusinessWeek, israelTimeToDate, israelWeekday, type BusinessWeek } from "@/lib/staff/week";
+import { addDays, currentBusinessWeek, israelTimeToDate, type BusinessWeek } from "@/lib/staff/week";
 import { weekOrdersRange } from "@/lib/staff/work/ranges";
 import { ensureBusinessWeek } from "@/lib/staff/owner/data";
 import { normalizeItems } from "./orders";
@@ -10,6 +10,8 @@ import {
   STALL_LOCK_MINUTES,
   computeSplit,
   parseSplitMode,
+  shortageCuts,
+  stallsDoneForTheDay,
   type ProductSplit,
   type SplitMode,
   type StallQty,
@@ -25,6 +27,8 @@ export type SplitStallRow = {
   /** The courier takes delivery bouquets from here (false before migration 045). */
   is_delivery_point: boolean;
   is_open: boolean;
+  /** When it was last opened (null before migration 049). */
+  opened_at: string | null;
 };
 
 export type StallSplitState = {
@@ -37,9 +41,9 @@ export type StallSplitState = {
   products: { id: string; title: string }[];
   plan: StallQty;
   split: Map<string, ProductSplit>;
-  /** Stalls that can't take website orders right now (on Friday: the closed ones). */
+  /** Friday: stalls that opened and closed again (no more website orders). */
   closedForOrders: Set<string>;
-  /** Friday and every stall is closed: the website can't take orders at all. */
+  /** Friday and every pickup / delivery stall is done for the day: nothing can be ordered. */
   noOrders: boolean;
   /** The split was cancelled because the supplier delivery changed after the lock: split again. */
   resetAt: string | null;
@@ -52,20 +56,13 @@ function addQty(m: StallQty, stallId: string, productId: string, qty: number) {
   m.set(stallId, inner);
 }
 
-/** A manager re-opened the split by hand: no auto-lock until they lock again. (false before migration 044) */
-async function manuallyUnlocked(admin: Admin, weekStart: string): Promise<boolean> {
-  const { data, error } = await admin.from("business_weeks").select("stalls_unlocked_at").eq("week_start", weekStart).maybeSingle();
-  if (error) return false;
-  return Boolean((data as { stalls_unlocked_at?: string | null } | null)?.stalls_unlocked_at);
-}
-
-/** Thursday evening of the week: from then on each stall has a fixed stock. */
+/** Thursday evening of the week: from then on the managers are reminded to lock the split. */
 export function lockTimeOf(week: BusinessWeek): Date {
   return israelTimeToDate(addDays(week.weekStart, STALL_LOCK_DAY), STALL_LOCK_MINUTES);
 }
 
-/** The current week's split, as it stands now. Locks it first if Thursday evening has passed. */
-export async function loadStallSplit(admin: Admin, opts: { autoLock?: boolean; now?: Date } = {}): Promise<StallSplitState> {
+/** The current week's split, as it stands now. It is locked only by a manager. */
+export async function loadStallSplit(admin: Admin, opts: { now?: Date } = {}): Promise<StallSplitState> {
   const now = opts.now ?? new Date();
   const settings = await getServerSettings();
   const week = currentBusinessWeek(settings, now);
@@ -108,12 +105,7 @@ export async function loadStallSplit(admin: Admin, opts: { autoLock?: boolean; n
     split_reset_note?: string | null;
   } | null;
   const lockAt = lockTimeOf(week);
-  let lockedAt = w?.stalls_locked_at ?? null;
-
-  if (!lockedAt && opts.autoLock !== false && now >= lockAt && !(await manuallyUnlocked(admin, week.weekStart))) {
-    await lockStalls(admin, now);
-    return loadStallSplit(admin, { ...opts, autoLock: false });
-  }
+  const lockedAt = w?.stalls_locked_at ?? null;
 
   const stalls = (
     (stallsRes.data ?? []) as {
@@ -123,6 +115,7 @@ export async function loadStallSplit(admin: Admin, opts: { autoLock?: boolean; n
       is_open?: boolean | null;
       is_pickup_point?: boolean | null;
       is_delivery_point?: boolean | null;
+      opened_at?: string | null;
     }[]
   ).map((s) => ({
     id: String(s.id),
@@ -131,13 +124,11 @@ export async function loadStallSplit(admin: Admin, opts: { autoLock?: boolean; n
     is_pickup_point: s.is_pickup_point === true,
     is_delivery_point: s.is_delivery_point === true,
     is_open: s.is_open === true,
+    opened_at: s.opened_at ?? null,
   }));
 
-  // The stalls sell on Friday only. On Friday a closed stall takes no website
-  // orders, and when every stall is closed there is nowhere to bring them from.
-  const friday = israelWeekday(now) === 5;
-  const closedForOrders = new Set(friday ? stalls.filter((s) => !s.is_open).map((s) => s.id) : []);
-  const noOrders = friday && stalls.length > 0 && stalls.every((s) => !s.is_open);
+  // Live orders go on until the stalls close on Friday (before they open, too).
+  const { closed: closedForOrders, noOrders } = stallsDoneForTheDay(stalls, now);
   const products = (productsRes.data ?? []).map((p) => ({ id: String(p.id), title: String(p.title) }));
   const live = new Map((invRes.data ?? []).map((r) => [String(r.product_id), Number(r.live_stock_count) || 0]));
 
@@ -195,7 +186,7 @@ export async function loadStallSplit(admin: Admin, opts: { autoLock?: boolean; n
  * caller locks; later calls do nothing.
  */
 export async function lockStalls(admin: Admin, now: Date = new Date()): Promise<boolean> {
-  const state = await loadStallSplit(admin, { autoLock: false, now });
+  const state = await loadStallSplit(admin, { now });
   if (state.lockedAt) return false;
   await ensureBusinessWeek(admin, state.week.weekStart, state.week.supplierOrderAt);
   const at = now.toISOString();
@@ -207,9 +198,7 @@ export async function lockStalls(admin: Admin, now: Date = new Date()): Promise<
     .select("week_start");
   if (error) throw new Error(`lock stalls: ${error.message}`);
   if (!claimed || claimed.length === 0) return false;
-  // Locked again: the next week's auto-lock works as usual, and a "split again" notice is done
-  // (each column is ignored before its migration, 044 / 048).
-  await admin.from("business_weeks").update({ stalls_unlocked_at: null }).eq("week_start", state.week.weekStart);
+  // Locked again: a "split again" notice is done (ignored before migration 048).
   await admin.from("business_weeks").update({ split_reset_at: null, split_reset_note: null }).eq("week_start", state.week.weekStart);
 
   // Start clean: nothing left over from older weeks.
@@ -237,14 +226,7 @@ export async function lockStalls(admin: Admin, now: Date = new Date()): Promise<
 export async function unlockStalls(admin: Admin, now: Date = new Date()): Promise<void> {
   const settings = await getServerSettings();
   const week = currentBusinessWeek(settings, now);
-  let { error } = await admin
-    .from("business_weeks")
-    .update({ stalls_locked_at: null, stalls_unlocked_at: now.toISOString() })
-    .eq("week_start", week.weekStart);
-  if (error && /stalls_unlocked_at/.test(error.message)) {
-    // Before migration 044 a re-open only lasts until the next auto-lock check.
-    ({ error } = await admin.from("business_weeks").update({ stalls_locked_at: null }).eq("week_start", week.weekStart));
-  }
+  const { error } = await admin.from("business_weeks").update({ stalls_locked_at: null }).eq("week_start", week.weekStart);
   if (error) throw new Error(`unlock stalls: ${error.message}`);
   await admin.from("stall_inventory").update({ stock: 0, initial_stock: 0, updated_at: now.toISOString() }).gte("stock", 0);
 }
@@ -311,28 +293,6 @@ export async function returnOrderStock(
   }
 }
 
-/**
- * Cheap check for busy screens: locks the split once Thursday evening has
- * passed. Never throws (before migration 043 it just does nothing).
- */
-export async function lockStallsIfDue(admin: Admin, now: Date = new Date()): Promise<void> {
-  try {
-    const settings = await getServerSettings();
-    const week = currentBusinessWeek(settings, now);
-    if (now < lockTimeOf(week)) return;
-    const { data, error } = await admin
-      .from("business_weeks")
-      .select("stalls_locked_at")
-      .eq("week_start", week.weekStart)
-      .maybeSingle();
-    if (error || (data as { stalls_locked_at?: string | null } | null)?.stalls_locked_at) return;
-    if (await manuallyUnlocked(admin, week.weekStart)) return;
-    await lockStalls(admin, now);
-  } catch (e) {
-    console.error("lockStallsIfDue:", e);
-  }
-}
-
 /** What the stock page needs to show and edit the split between the stalls. */
 export function splitPayload(state: StallSplitState) {
   return {
@@ -363,29 +323,64 @@ export function splitPayload(state: StallSplitState) {
   };
 }
 
+type Move = { stall_id: string; product_id: string; delta: number };
 
 /**
- * The supplier delivery changed after the split was locked (fewer / more than
- * ordered, or a new bouquet): the old split is wrong, so it is cancelled
- * completely (no automatic percent split either) and the managers are told to
- * split again. Does nothing while the split is still open. Never throws.
+ * Moves stock in the stalls (after the lock), all or nothing: removals first,
+ * and if one step fails everything done so far is undone. What each stall got
+ * (initial_stock, the supply runner's list) follows. Returns the failed move.
  */
-export async function resetSplitAfterDelivery(admin: Admin, note: string, now: Date = new Date()): Promise<boolean> {
-  try {
-    const settings = await getServerSettings();
-    const week = currentBusinessWeek(settings, now);
-    const { data } = await admin.from("business_weeks").select("stalls_locked_at").eq("week_start", week.weekStart).maybeSingle();
-    if (!(data as { stalls_locked_at?: string | null } | null)?.stalls_locked_at) return false;
-    await unlockStalls(admin, now);
-    await admin.from("stall_plan").delete().eq("week_start", week.weekStart);
-    await admin.from("business_weeks").update({ stall_split_mode: "count", stall_split_percents: {} }).eq("week_start", week.weekStart);
-    await admin
-      .from("business_weeks")
-      .update({ split_reset_at: now.toISOString(), split_reset_note: note })
-      .eq("week_start", week.weekStart);
-    return true;
-  } catch (e) {
-    console.error("resetSplitAfterDelivery:", e);
-    return false;
+export async function applyStallMoves(admin: Admin, moves: Move[]): Promise<{ ok: true } | { ok: false; failed: Move }> {
+  const sorted = [...moves].sort((a, b) => a.delta - b.delta);
+  const done: Move[] = [];
+  for (const m of sorted) {
+    if (m.delta === 0) continue;
+    if (!(await stallStep(admin, m.stall_id, m.product_id, m.delta))) {
+      for (const d of done.reverse()) await stallStep(admin, d.stall_id, d.product_id, -d.delta);
+      return { ok: false, failed: m };
+    }
+    done.push(m);
   }
+  for (const m of done) {
+    const { data } = await admin
+      .from("stall_inventory")
+      .select("initial_stock")
+      .eq("stall_id", m.stall_id)
+      .eq("product_id", m.product_id)
+      .maybeSingle();
+    const next = Math.max(0, (Number(data?.initial_stock) || 0) + m.delta);
+    await admin.from("stall_inventory").update({ initial_stock: next }).eq("stall_id", m.stall_id).eq("product_id", m.product_id);
+  }
+  return { ok: true };
+}
+
+/** Undoes moves made by applyStallMoves. */
+export async function undoStallMoves(admin: Admin, moves: Move[]): Promise<void> {
+  await applyStallMoves(
+    admin,
+    moves.map((m) => ({ ...m, delta: -m.delta })),
+  );
+}
+
+/**
+ * After the lock, fewer of one bouquet arrived than counted: takes the missing
+ * ones off what no stall holds, then off the stalls that have the most. Only
+ * this bouquet changes; the rest of the split stays. Before the lock nothing
+ * is needed (the split follows the stock). `short` > 0 = orders hold the rest.
+ */
+export async function cutStallsForShortage(
+  admin: Admin,
+  productId: string,
+  shortBy: number,
+): Promise<{ ok: true; moves: Move[] } | { ok: false; short: number }> {
+  const state = await loadStallSplit(admin);
+  if (!state.lockedAt || shortBy <= 0) return { ok: true, moves: [] };
+  const p = state.split.get(productId);
+  if (!p) return { ok: true, moves: [] };
+  const { cuts, short } = shortageCuts(p.stallFree, p.undistributed, shortBy);
+  if (short > 0) return { ok: false, short };
+  const moves = cuts.map((c) => ({ ...c, product_id: productId }));
+  const res = await applyStallMoves(admin, moves);
+  if (!res.ok) return { ok: false, short: 0 };
+  return { ok: true, moves };
 }

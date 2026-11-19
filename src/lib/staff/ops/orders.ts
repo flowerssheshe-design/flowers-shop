@@ -5,8 +5,9 @@
 import type { OrderItem, OrderStatus, OrderType, OrdersSummary, StaffOrder } from "./types";
 
 /** Columns the staff orders API reads. */
-export const ORDER_COLUMNS =
-  "id, created_at, status, order_type, customer_name, customer_phone, delivery_address, delivery_type, fulfillment_type, delivery_fee, total_amount, items, notes, greeting_note, payment_method, is_member, stall_id, approved_by, inventory_deducted";
+// "*": the later columns (pickup_stall_id, refund_due / refunded_at of migration 050)
+// come along when they exist, and the page still works before the migration.
+export const ORDER_COLUMNS = "*";
 
 export type OrderAction = "approve" | "unapprove" | "complete" | "cancel";
 
@@ -112,6 +113,9 @@ export function normalizeOrder(row: Record<string, unknown>, names: Map<string, 
     approved_by: approvedBy,
     approved_by_name: approvedBy ? names.get(approvedBy) ?? null : null,
     inventory_deducted: row.inventory_deducted === true,
+    pickup_stall_id: row.pickup_stall_id ? String(row.pickup_stall_id) : null,
+    refund_due: row.refund_due === null || row.refund_due === undefined ? null : Number(row.refund_due) || 0,
+    refunded_at: (row.refunded_at as string | null | undefined) ?? null,
   };
 }
 
@@ -151,4 +155,30 @@ export function filterOrders(orders: StaffOrder[], f: OrderFilters): StaffOrder[
     }
     return true;
   });
+}
+
+/**
+ * A bouquet the supplier didn't have: the order gets another bouquet instead,
+ * same quantity and same price (the customer already paid).
+ */
+export function swapItems(items: OrderItem[], fromId: string, to: { id: string; title: string }): OrderItem[] {
+  return items.map((it) => (it.productId === fromId ? { ...it, productId: to.id, title: to.title } : it));
+}
+
+/**
+ * A cancelled order that was paid by Bit / PayBox: the amount to send back by
+ * hand. Cash, or not paid yet: nothing (null).
+ */
+export function refundDueFor(o: { status: string; payment_method: string | null; total_amount: number }): number | null {
+  const paid = o.status === "approved" || o.status === "completed";
+  if (!paid || (o.payment_method !== "bit" && o.payment_method !== "paybox")) return null;
+  return o.total_amount > 0 ? Math.round(o.total_amount * 100) / 100 : null;
+}
+
+/**
+ * Does the order hold its bouquets in the stock? A live order once deducted;
+ * a pre-order once the supplier order went out (the stock was set without it).
+ */
+export function orderHoldsStock(o: { inventory_deducted: boolean; order_type: string }, supplierOrdered: boolean): boolean {
+  return o.inventory_deducted || (o.order_type === "preorder" && supplierOrdered);
 }

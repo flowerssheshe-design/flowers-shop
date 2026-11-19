@@ -30,13 +30,17 @@ function fail(what: string, error: { message?: string } | null): never {
 }
 
 export async function loadOrders(admin: Admin, from: Date, to: Date): Promise<OrderRow[]> {
-  const { data, error } = await admin
-    .from("orders")
-    .select(ORDER_COLUMNS)
-    .gte("created_at", from.toISOString())
-    .lt("created_at", to.toISOString())
-    .order("created_at", { ascending: true })
-    .limit(10000);
+  const run = (cols: string) =>
+    admin
+      .from("orders")
+      .select(cols)
+      .gte("created_at", from.toISOString())
+      .lt("created_at", to.toISOString())
+      .order("created_at", { ascending: true })
+      .limit(10000);
+  // The stall of a website order and pickup / delivery (later migrations); without them, the old columns.
+  let { data, error } = await run(`${ORDER_COLUMNS}, pickup_stall_id, fulfillment_type`);
+  if (error && /pickup_stall_id|fulfillment_type/.test(error.message ?? "")) ({ data, error } = await run(ORDER_COLUMNS));
   if (error) fail("orders", error);
   return (data ?? []) as unknown as OrderRow[];
 }
@@ -137,6 +141,12 @@ export async function loadSupplierLines(
   weekStarts: string[],
 ): Promise<(SupplierLineRow & { week_start: string })[]> {
   if (weekStarts.length === 0) return [];
+  // With the free ones (migration 050).
+  const withFree = await admin
+    .from("supplier_order_lines")
+    .select("week_start, product_id, preorder_qty, extra_qty, final_qty, order_mode, received_qty, unit_cost, free_qty")
+    .in("week_start", weekStarts);
+  if (!withFree.error) return (withFree.data ?? []) as (SupplierLineRow & { week_start: string })[];
   // With what really came and what was paid (migration 046).
   const withReceipts = await admin
     .from("supplier_order_lines")

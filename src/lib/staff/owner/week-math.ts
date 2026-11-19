@@ -35,6 +35,10 @@ export type OrderRow = {
   customer_phone?: string | null;
   delivered_by?: string | null;
   delivered_at?: string | null;
+  /** Website orders: the stall the bouquets come from (pickup there, or the courier takes them). */
+  pickup_stall_id?: string | null;
+  delivery_type?: string | null;
+  fulfillment_type?: string | null;
 };
 
 export type ProductRow = {
@@ -79,6 +83,8 @@ export type SupplierLineRow = {
   received_qty?: number | null;
   /** What was really paid per bouquet; null = the product's cost price. */
   unit_cost?: number | string | null;
+  /** How many of what arrived were free (not paid). */
+  free_qty?: number | string | null;
 };
 
 export type PayrollSnapshotRow = {
@@ -417,7 +423,7 @@ export function computeWeekFinance(input: WeekFinanceInput): WeekFinance {
     ? (input.supplierLines ?? []).reduce(
         (s, l) =>
           s +
-          num(l.received_qty ?? l.final_qty) *
+          Math.max(0, num(l.received_qty ?? l.final_qty) - num(l.free_qty ?? 0)) *
             (l.unit_cost === null || l.unit_cost === undefined ? costById.get(l.product_id) ?? 0 : num(l.unit_cost)),
         0,
       )
@@ -486,8 +492,36 @@ export type StallSummary = {
   is_open: boolean;
   sales: { count: number; revenue: number; bit: number; cash: number; other: number };
   stock: { remaining: number; initial: number; products: { product_id: string; title: string; stock: number; initial: number }[] };
+  /** Website orders taken from this stall this week (none = the card doesn't show it). */
+  websiteOrders: StallWebsiteOrders;
   workersToday: { employee_id: string; full_name: string; start_time: string; end_time: string }[];
 };
+
+export type StallWebsiteOrders = {
+  /** Open or done orders (cancelled / archived left out). */
+  orders: number;
+  bouquets: number;
+  pickedUp: number;
+  sent: number;
+  /** Still waiting at the stall (not picked up / not sent yet). */
+  waiting: number;
+};
+
+/** The week's website orders whose bouquets come from `stallId`, and how many already left. */
+export function stallWebsiteOrders(orders: OrderRow[], stallId: string): StallWebsiteOrders {
+  const out: StallWebsiteOrders = { orders: 0, bouquets: 0, pickedUp: 0, sent: 0, waiting: 0 };
+  for (const o of orders) {
+    if (!isCounted(o) || o.status === "archived" || orderChannel(o) === "stall" || o.pickup_stall_id !== stallId) continue;
+    out.orders += 1;
+    out.bouquets += orderItems(o).reduce((t, it) => t + it.qty, 0);
+    const delivery = (o.fulfillment_type ?? o.delivery_type) === "delivery";
+    const done = o.status === "completed" || Boolean(o.delivered_at);
+    if (!done) out.waiting += 1;
+    else if (delivery) out.sent += 1;
+    else out.pickedUp += 1;
+  }
+  return out;
+}
 
 export type DashboardInput = {
   week: BusinessWeek;
@@ -591,6 +625,7 @@ export function buildDashboard(input: DashboardInput): DashboardData {
           cash: round2(sales.cash),
           other: round2(sales.other),
         },
+        websiteOrders: stallWebsiteOrders(orders, s.id),
         stock: {
           remaining: stockRows.reduce((t, r) => t + num(r.stock), 0),
           initial: stockRows.reduce((t, r) => t + num(r.initial_stock), 0),

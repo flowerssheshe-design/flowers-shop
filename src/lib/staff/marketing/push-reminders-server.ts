@@ -27,7 +27,7 @@ export async function loadReminders(admin: Admin): Promise<{ config: ReminderCon
 /** How many bouquets can still be ordered on the website (for {left}). */
 async function bouquetsLeft(admin: Admin): Promise<number | null> {
   try {
-    const split = await loadStallSplit(admin, { autoLock: false });
+    const split = await loadStallSplit(admin);
     return Array.from(split.split.values()).reduce((s, p) => s + p.orderable, 0);
   } catch {
     const { data, error } = await admin.from("inventory").select("live_stock_count");

@@ -8,7 +8,7 @@ import { useToast } from "@/components/ui/toaster";
 import { ROLE_LABELS, type StaffRole } from "@/lib/staff/access";
 import { T } from "@/lib/staff/labels";
 import { cn, formatILS } from "@/lib/utils";
-import { opsFetch } from "@/lib/staff/ops/client";
+import { SCHEDULE_CHANGED_EVENT, opsFetch } from "@/lib/staff/ops/client";
 import { Collapsible, ErrorBlock, LoadingBlock, useOpsData } from "./common";
 
 type Person = {
@@ -48,11 +48,30 @@ export function BudgetPanel({ week, meId }: { week: string; meId: string }) {
   const [saving, setSaving] = React.useState(false);
   const [savingBudget, setSavingBudget] = React.useState(false);
   const { toast } = useToast();
+  const lastBudget = React.useRef<string | null>(null);
+
+  // Someone was staffed or removed (any screen on this page): load who gets paid
+  // again right away. A save of several shifts fires a few events: load once.
+  React.useEffect(() => {
+    let t: number | undefined;
+    const onChange = () => {
+      window.clearTimeout(t);
+      t = window.setTimeout(() => void reload(), 120);
+    };
+    window.addEventListener(SCHEDULE_CHANGED_EVENT, onChange);
+    return () => {
+      window.clearTimeout(t);
+      window.removeEventListener(SCHEDULE_CHANGED_EVENT, onChange);
+    };
+  }, [reload]);
 
   React.useEffect(() => {
     if (!data) return;
-    setAmounts(Object.fromEntries(data.people.map((p) => [p.id, p.amount ? String(p.amount) : ""])));
-    setBudgetInput(data.budget === null ? "" : String(data.budget));
+    // Keep what the manager already typed for people still on the list; new people get their saved amount.
+    setAmounts((prev) => Object.fromEntries(data.people.map((p) => [p.id, prev[p.id] ?? (p.amount ? String(p.amount) : "")])));
+    const b = data.budget === null ? "" : String(data.budget);
+    setBudgetInput((cur) => (lastBudget.current === null || cur === lastBudget.current ? b : cur));
+    lastBudget.current = b;
   }, [data]);
 
   if (loading && !data) return <LoadingBlock />;

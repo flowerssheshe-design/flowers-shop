@@ -54,7 +54,7 @@ export async function GET() {
     let pickupPoints: { id: string; name: string; location: string | null; stock: Record<string, number> }[] = [];
     let deliveryStock: Record<string, number> | null = null;
     let orderable: Map<string, number> | null = null;
-    // Friday: closed stalls take no orders; with every stall closed nothing can be ordered.
+    // Friday: a stall that opened and then closed takes no more orders; when all of them did, nothing can be ordered.
     let pickupClosed = false;
     let orderingClosed = false;
     try {

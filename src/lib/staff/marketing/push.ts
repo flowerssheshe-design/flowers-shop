@@ -83,3 +83,42 @@ export async function sendPushToAll(
   await writeLog(admin, logs);
   return { sent, failed, removed: gone.length, total: subs.length };
 }
+
+/**
+ * Sends a notification to the phones of these employees (their staff
+ * subscriptions), and removes the ones the browser revoked. Never throws:
+ * a notification is a nice-to-have, the order itself is already saved.
+ */
+export async function sendPushToEmployees(admin: Admin, employeeIds: string[], payload: PushPayload): Promise<number> {
+  if (!pushConfigured() || employeeIds.length === 0) return 0;
+  try {
+    ensureVapid();
+    const { data, error } = await admin
+      .from("staff_push_subscriptions")
+      .select("id, endpoint, p256dh, auth")
+      .in("employee_id", employeeIds);
+    if (error) return 0; // before migration 051
+    const body = JSON.stringify(payload);
+    const gone: string[] = [];
+    let sent = 0;
+    await Promise.all(
+      ((data ?? []) as SubRow[]).map(async (s) => {
+        try {
+          await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, body, {
+            TTL: 60 * 30,
+            urgency: "high",
+          });
+          sent += 1;
+        } catch (e) {
+          const code = (e as { statusCode?: number }).statusCode;
+          if (code === 404 || code === 410) gone.push(s.id);
+        }
+      }),
+    );
+    if (gone.length > 0) await admin.from("staff_push_subscriptions").delete().in("id", gone);
+    return sent;
+  } catch (e) {
+    console.error("staff push:", e);
+    return 0;
+  }
+}

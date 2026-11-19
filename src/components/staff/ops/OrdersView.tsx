@@ -23,7 +23,10 @@ type OrdersResponse = {
   isCurrentWeek: boolean;
   orders: StaffOrder[];
   summary: OrdersSummary;
+  stalls?: OrderStall[];
 };
+
+type OrderStall = { id: string; name: string; is_pickup_point: boolean; is_delivery_point: boolean };
 
 const STATUS_STYLE: Record<string, string> = {
   pending_payment: "bg-amber-100 text-amber-900",
@@ -32,6 +35,14 @@ const STATUS_STYLE: Record<string, string> = {
   cancelled: "bg-muted text-muted-foreground line-through",
   archived: "bg-muted text-muted-foreground",
 };
+
+/** What the order has, for its row in the list: "חמניות ×2, ורדים ×1". */
+function bouquetsText(o: StaffOrder) {
+  return o.items
+    .filter((i) => i.qty > 0)
+    .map((i) => `${i.title} ×${i.qty}`)
+    .join(", ");
+}
 
 function StatusBadge({ status }: { status: string }) {
   return <Badge className={cn("hover:bg-inherit", STATUS_STYLE[status])}>{T.status[status] ?? status}</Badge>;
@@ -53,6 +64,8 @@ export function OrdersView({ me }: { me: ShellEmployee }) {
   const { toast } = useToast();
 
   const orders = React.useMemo(() => (data ? filterOrders(data.orders, filters) : []), [data, filters]);
+  const stallNames = React.useMemo(() => new Map((data?.stalls ?? []).map((s) => [s.id, s.name])), [data]);
+  const stallName = (o: StaffOrder) => (o.pickup_stall_id ? stallNames.get(o.pickup_stall_id) ?? null : null);
   const open = data?.orders.find((o) => o.id === openId) ?? null;
   const setF = <K extends keyof OrderFilters>(k: K, v: OrderFilters[K]) => setFilters((f) => ({ ...f, [k]: v }));
 
@@ -187,14 +200,17 @@ export function OrdersView({ me }: { me: ShellEmployee }) {
                         </span>
                         <StatusBadge status={o.status} />
                       </span>
+                      {bouquetsText(o) && <span className="mt-1 block text-sm">{bouquetsText(o)}</span>}
                       <span className="mt-2 flex items-center justify-between text-sm">
                         <span className="flex items-center gap-1 text-muted-foreground">
                           {isDelivery(o) ? <Bike className="h-4 w-4" aria-hidden="true" /> : <ShoppingBag className="h-4 w-4" aria-hidden="true" />}
                           {isDelivery(o) ? T.delivery : T.pickup}
+                          {stallName(o) && ` · ${stallName(o)}`}
                         </span>
                         <span className="font-semibold">{formatILS(o.total_amount)}</span>
                       </span>
                       <OrderNotes order={o} compact />
+                      <RefundBadge order={o} />
                     </button>
                     {o.status === "pending_payment" && (
                       <QuickApprove busy={quickBusy === o.id} onApprove={() => void quickApprove(o)} className="w-full" />
@@ -229,16 +245,21 @@ export function OrdersView({ me }: { me: ShellEmployee }) {
                           <span className="block text-xs text-muted-foreground" dir="ltr" style={{ textAlign: "right" }}>
                             {o.customer_phone}
                           </span>
+                          {bouquetsText(o) && <span className="block text-xs">{bouquetsText(o)}</span>}
                           <span className="block max-w-sm">
                             <OrderNotes order={o} compact />
                           </span>
                         </td>
                         <td className="p-3 text-muted-foreground">{formatDateTime(o.created_at)}</td>
                         <td className="p-3">{ORDER_TYPE_LABELS[o.order_type]}</td>
-                        <td className="p-3">{isDelivery(o) ? T.delivery : T.pickup}</td>
+                        <td className="p-3">
+                          {isDelivery(o) ? T.delivery : T.pickup}
+                          {stallName(o) && <span className="block text-xs text-muted-foreground">{stallName(o)}</span>}
+                        </td>
                         <td className="p-3 font-medium">{formatILS(o.total_amount)}</td>
                         <td className="p-3">
                           <StatusBadge status={o.status} />
+                          <RefundBadge order={o} />
                         </td>
                         <td className="p-3 text-left" onClick={(e) => e.stopPropagation()}>
                           {o.status === "pending_payment" && (
@@ -267,6 +288,8 @@ export function OrdersView({ me }: { me: ShellEmployee }) {
           order={open}
           onClose={() => setOpenId(null)}
           onAction={runAction}
+          stalls={data?.stalls ?? []}
+          onPatch={replaceOrder}
           onDelete={canManageTeam(me) || hasRole(me, "ops_manager") ? deleteOrder : undefined}
         />
       )}
@@ -361,11 +384,16 @@ function OrderSheet({
   order: o,
   onClose,
   onAction,
+  stalls,
+  onPatch,
   onDelete,
 }: {
   order: StaffOrder;
   onClose: () => void;
   onAction: (o: StaffOrder, a: OrderAction) => Promise<void>;
+  stalls: OrderStall[];
+  /** The order changed here (stall, refund): show it without a reload. */
+  onPatch: (o: StaffOrder) => void;
   /** Main managers only. */
   onDelete?: (o: StaffOrder) => Promise<void>;
 }) {
@@ -457,6 +485,8 @@ function OrderSheet({
         <p className="text-xs text-muted-foreground">{formatDateTime(o.created_at)}</p>
 
         <OrderNotes order={o} />
+        <OrderStallPicker order={o} stalls={stalls} onPatch={onPatch} />
+        <RefundBox order={o} onPatch={onPatch} />
 
         {confirmLink && (
           <a
@@ -594,5 +624,104 @@ function QuickApprove({
       {undo ? <Undo2 className="h-4 w-4" aria-hidden="true" /> : <CreditCard className="h-4 w-4" aria-hidden="true" />}
       {busy ? T.saving : undo ? "ביטול אישור" : OPS.approvePayment}
     </Button>
+  );
+}
+
+/** A cancelled paid order: the money to send back by hand. */
+function RefundBadge({ order: o }: { order: StaffOrder }) {
+  if (o.refund_due === null) return null;
+  return o.refunded_at ? (
+    <span className="mt-1 block text-xs text-muted-foreground">הכסף הוחזר</span>
+  ) : (
+    <span className="mt-1 inline-block rounded bg-destructive/10 px-1.5 py-0.5 text-xs font-medium text-destructive">
+      להחזיר {formatILS(o.refund_due)}
+    </span>
+  );
+}
+
+function RefundBox({ order: o, onPatch }: { order: StaffOrder; onPatch: (o: StaffOrder) => void }) {
+  const { toast } = useToast();
+  const [busy, setBusy] = React.useState(false);
+  if (o.refund_due === null) return null;
+  if (o.refunded_at) {
+    return <p className="rounded-md border p-3 text-sm text-muted-foreground">ההזמנה בוטלה והכסף ({formatILS(o.refund_due)}) הוחזר ללקוח.</p>;
+  }
+  const due = o.refund_due;
+  async function done() {
+    setBusy(true);
+    try {
+      await opsFetch(`/api/staff/orders/${o.id}/refund`, { method: "POST" });
+      onPatch({ ...o, refunded_at: new Date().toISOString() });
+      toast({ title: "סומן שהכסף הוחזר", variant: "success" });
+    } catch (e) {
+      toast({ title: e instanceof Error ? e.message : T.saveError, variant: "error" });
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm">
+      <p className="font-medium">ההזמנה בוטלה אחרי תשלום: צריך להחזיר ללקוח {formatILS(due)}.</p>
+      <p className="text-xs text-muted-foreground">מחזירים בביט / פייבוקס, ואז מסמנים כאן.</p>
+      <Button className="mt-2 h-11 sm:h-10" disabled={busy} onClick={() => void done()}>
+        {busy ? T.saving : "הכסף הוחזר"}
+      </Button>
+    </div>
+  );
+}
+
+/**
+ * Where the customer picks up (or, for a delivery, where the courier takes it
+ * from). Moving it moves the order's bouquets too.
+ */
+function OrderStallPicker({ order: o, stalls, onPatch }: { order: StaffOrder; stalls: OrderStall[]; onPatch: (o: StaffOrder) => void }) {
+  const { toast } = useToast();
+  const delivery = isDelivery(o);
+  const options = stalls.filter((s) => (delivery ? s.is_delivery_point : s.is_pickup_point));
+  const [to, setTo] = React.useState(o.pickup_stall_id ?? "");
+  const [busy, setBusy] = React.useState(false);
+  const open = o.order_type !== "stall" && (o.status === "pending_payment" || o.status === "approved");
+  if (!open || options.length === 0 || (!o.pickup_stall_id && options.length < 2)) return null;
+
+  async function save() {
+    if (!to || to === o.pickup_stall_id) return;
+    setBusy(true);
+    try {
+      await opsFetch(`/api/staff/orders/${o.id}/stall`, { method: "PATCH", body: { stall_id: to } });
+      onPatch({ ...o, pickup_stall_id: to });
+      toast({ title: `ההזמנה עברה ל${options.find((s) => s.id === to)?.name ?? "דוכן"}`, variant: "success" });
+    } catch (e) {
+      toast({ title: e instanceof Error ? e.message : T.saveError, variant: "error" });
+      setTo(o.pickup_stall_id ?? "");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="rounded-md border p-3">
+      <label className="text-sm font-medium" htmlFor={`stall-${o.id}`}>
+        {delivery ? "השליח לוקח מהדוכן" : "דוכן האיסוף"}
+      </label>
+      <div className="mt-2 flex gap-2">
+        <select
+          id={`stall-${o.id}`}
+          value={to}
+          onChange={(e) => setTo(e.target.value)}
+          className="h-11 min-w-0 flex-1 rounded-md border bg-background px-2 text-sm sm:h-10"
+        >
+          {!o.pickup_stall_id && <option value="">בחרו דוכן</option>}
+          {options.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name}
+            </option>
+          ))}
+        </select>
+        <Button className="h-11 sm:h-10" disabled={busy || !to || to === o.pickup_stall_id} onClick={() => void save()}>
+          {busy ? T.saving : "העברה"}
+        </Button>
+      </div>
+      <p className="mt-1 text-xs text-muted-foreground">הזרים של ההזמנה עוברים איתה לדוכן החדש.</p>
+    </div>
   );
 }

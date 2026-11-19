@@ -82,11 +82,12 @@ export function Storefront({
   const [submittedOrder, setSubmittedOrder] = useState<Order | null>(null);
   const [stockById, setStockById] = useState<Record<string, number>>({});
   const [pickupPoints, setPickupPoints] = useState<PickupPoint[]>([]);
+  // Friday: the pickup stalls (or all of them) opened and closed again.
+  const [stallsPickupClosed, setStallsPickupClosed] = useState(false);
+  const [stallsDone, setStallsDone] = useState(false);
   const [deliveryStock, setDeliveryStock] = useState<Record<string, number> | null>(null);
   const [pickupStallId, setPickupStallId] = useState<string>("");
   // Friday: every pickup stall is closed / every stall is closed (nowhere to bring orders from).
-  const [stallsPickupClosed, setStallsPickupClosed] = useState(false);
-  const [orderingClosed, setOrderingClosed] = useState(false);
   const [stockLoading, setStockLoading] = useState(true);
   const [liveProducts, setLiveProducts] = useState<Product[]>(products);
 
@@ -138,9 +139,9 @@ export function Storefront({
           const stockMap: Record<string, number> = {};
            const availability: Record<string, boolean> = {};
            setPickupPoints(Array.isArray(data.pickup_points) ? data.pickup_points : []);
-           setDeliveryStock(data.delivery_stock ?? null);
            setStallsPickupClosed(data.pickup_closed === true);
-           setOrderingClosed(data.ordering_closed === true);
+           setStallsDone(data.ordering_closed === true);
+           setDeliveryStock(data.delivery_stock ?? null);
            (data.inventory ?? []).forEach((item: any) => {
              // "orderable" = what can still be ordered at some pickup point or for delivery.
              const stock = item.orderable ?? item.live_stock_count ?? 0;
@@ -313,8 +314,10 @@ export function Storefront({
 
   // The owner can turn off same-day pickup / delivery on Friday itself.
   const isFriday = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Jerusalem", weekday: "short" }).format(new Date()) === "Fri";
-  const pickupClosed = orderingClosed || stallsPickupClosed || (isFriday && settings.friday_pickup === false);
-  const deliveryClosed = orderingClosed || (isFriday && settings.friday_delivery === false);
+  const pickupClosed = stallsDone || stallsPickupClosed || (isFriday && settings.friday_pickup === false);
+  const deliveryClosed = stallsDone || (isFriday && settings.friday_delivery === false);
+  // Nothing can be ordered right now (not the same as a bouquet that is sold out).
+  const orderingClosed = pickupClosed && deliveryClosed;
   useEffect(() => {
     if (deliveryType === "pickup" && pickupClosed && !deliveryClosed) setDeliveryType("delivery");
     if (deliveryType === "delivery" && deliveryClosed && !pickupClosed) setDeliveryType("pickup");
@@ -475,6 +478,7 @@ export function Storefront({
           qualifiesForMember={qualifiesForMember}
           discountPercent={discountPercent}
           stockById={stockById}
+          orderingClosed={orderingClosed}
         />
       </section>
 
@@ -692,6 +696,8 @@ export function Storefront({
           pickupClosed={pickupClosed}
           deliveryClosed={deliveryClosed}
           orderingClosed={orderingClosed}
+          stallsDone={stallsDone}
+          stallsPickupClosed={stallsPickupClosed}
          />
        </Dialog>
       {/* Stall Status Badge - Top-Right (floating) */}
@@ -709,8 +715,10 @@ export function Storefront({
               {isStallOpen
                 ? "הדוכן פתוח! בואו לבקר"
                 : orderingClosed
-                  ? "כל הדוכנים סגורים כרגע — אי אפשר להזמין עכשיו"
-                  : "הדוכנים סגורים כרגע — אפשר להזמין לאיסוף או למשלוח ביום שישי"}
+                  ? stallsDone
+                    ? "הדוכנים נסגרו להיום — לא ניתן להזמין כרגע"
+                    : "לא ניתן להזמין מהאתר כרגע"
+                  : "הדוכנים סגורים כרגע — אפשר להמשיך להזמין באתר"}
             </span>
             <button
               onClick={dismissStallToast}
@@ -893,6 +901,9 @@ type CheckoutDialogProps = {
   deliveryClosed: boolean;
   /** Every stall is closed on Friday: no orders at all. */
   orderingClosed: boolean;
+  /** Friday: the stalls opened and closed again. */
+  stallsDone: boolean;
+  stallsPickupClosed: boolean;
 };
 
 type PickupPoint = { id: string; name: string; location: string | null; stock: Record<string, number> };
@@ -930,6 +941,8 @@ function CheckoutDialog(props: CheckoutDialogProps) {
     pickupClosed,
     deliveryClosed,
     orderingClosed,
+    stallsDone,
+    stallsPickupClosed,
   } = props;
 
   const deliveryFee =
@@ -982,10 +995,12 @@ function CheckoutDialog(props: CheckoutDialogProps) {
         {(pickupClosed || deliveryClosed) && (
           <p className="mt-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-900">
             {orderingClosed
-              ? "כל הדוכנים סגורים כרגע, ולכן אי אפשר להזמין עכשיו."
-              : pickupClosed && deliveryClosed
-                ? "היום (שישי) אין הזמנות לאיסוף או למשלוח מהאתר."
-                : pickupClosed
+              ? stallsDone
+                ? "הדוכנים נסגרו להיום, ולכן לא ניתן להזמין כרגע."
+                : "לא ניתן להזמין מהאתר כרגע: היום (שישי) אין הזמנות לאיסוף או למשלוח."
+              : pickupClosed && stallsPickupClosed
+                ? "דוכני האיסוף נסגרו להיום, רק משלוחים."
+              : pickupClosed
                   ? "כרגע אין איסוף עצמי מהאתר, רק משלוחים."
                   : "היום (שישי) אין משלוחים, רק איסוף עצמי."}
           </p>

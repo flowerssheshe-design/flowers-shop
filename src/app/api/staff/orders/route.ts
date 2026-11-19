@@ -42,7 +42,16 @@ export async function GET(req: Request) {
       for (const e of emps ?? []) names.set(String(e.id), String(e.full_name));
     }
     const orders = rows.map((r) => normalizeOrder(r, names));
+    // For moving an order to another stall ("*": the point flags exist only after migrations 043 / 045).
+    const { data: stallRows } = await admin.from("stalls").select("*").eq("is_active", true).order("sort_order");
+    const stalls = ((stallRows ?? []) as Record<string, unknown>[]).map((s) => ({
+      id: String(s.id),
+      name: String(s.name),
+      is_pickup_point: s.is_pickup_point === true,
+      is_delivery_point: s.is_delivery_point === true,
+    }));
     return NextResponse.json({
+      stalls,
       weekStart: week.weekStart,
       weekEnd: week.weekEnd,
       isCurrentWeek: week.isCurrentWeek,

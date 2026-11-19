@@ -115,9 +115,9 @@ export async function loadTasks(admin: Admin, who: StaffIdentity, now: Date = ne
         href: "/staff/stalls",
       });
     }
-    // The bouquet split matters once the website sells from stock, until Thursday evening's lock.
+    // The bouquet split matters once the website sells from stock, until a manager locks it.
     try {
-      const split = await loadStallSplit(admin, { autoLock: false, now });
+      const split = await loadStallSplit(admin, { now });
       if (split.resetAt && !split.lockedAt) {
         tasks.push({
           id: "resplit-bouquets",
@@ -133,7 +133,17 @@ export async function loadTasks(admin: Admin, who: StaffIdentity, now: Date = ne
           id: "split-bouquets",
           group: "ops",
           title: "לחלק זרים בין הדוכנים",
-          detail: "עוד לא נקבעה חלוקה (כרגע: חלוקה שווה). ננעל אוטומטית בחמישי ב-20:00.",
+          detail: "עוד לא נשמרה חלוקה (כרגע: חלוקה שווה).",
+          href: "/staff/stalls",
+        });
+      }
+      // Nothing locks by itself: without a lock the stalls have no stock to sell on Friday.
+      if (!split.lockedAt && !split.resetAt && now >= split.lockAt && split.stalls.length > 0) {
+        tasks.push({
+          id: "lock-bouquet-split",
+          group: "ops",
+          title: "לנעול את חלוקת הזרים לדוכנים",
+          detail: "בלי נעילה לדוכנים אין מלאי למכירה ביום שישי.",
           href: "/staff/stalls",
         });
       }

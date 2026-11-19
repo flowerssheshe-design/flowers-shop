@@ -55,4 +55,15 @@ export type StallData = {
   equipment?: { id: string; name: string }[];
   checklists?: { open: Checklist; close: Checklist };
   pickupOrders?: PickupOrder[];
+  /** Today's website orders from this stall (pickup or delivery), for the "new order" popup. */
+  newOrders?: NewStallOrder[];
+};
+
+export type NewStallOrder = {
+  id: string;
+  created_at: string;
+  customer_name: string;
+  items: { title: string; qty: number }[] | null;
+  delivery: boolean;
+  paid: boolean;
 };

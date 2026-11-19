@@ -70,6 +70,18 @@ export function StallsTab({ data }: { data: DashboardData }) {
           <Line label={T.bit} value={formatILS(s.sales.bit)} />
           <Line label={T.cash} value={formatILS(s.sales.cash)} />
           {s.sales.other > 0 && <Line label="אחר" value={formatILS(s.sales.other)} />}
+          {s.websiteOrders.orders > 0 && (
+            <div className="my-2 rounded-md bg-muted/50 p-2 text-sm">
+              <Line
+                label={`הזמנות מהאתר מהדוכן (${s.websiteOrders.orders})`}
+                value={`${s.websiteOrders.bouquets} זרים`}
+                strong
+              />
+              <p className="text-xs text-muted-foreground">
+                נאספו {s.websiteOrders.pickedUp} · נשלחו {s.websiteOrders.sent} · מחכות בדוכן {s.websiteOrders.waiting}
+              </p>
+            </div>
+          )}
           <Line label="מלאי שנשאר" value={`${s.stock.remaining} מתוך ${s.stock.initial}`} strong />
           {s.stock.products.length > 0 && (
             <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground">
@@ -124,7 +136,7 @@ export function TeamTab({ data }: { data: DashboardData }) {
           <li key={t.employee_id || `${t.role}-${t.full_name}`} className="py-2 text-sm">
             <div className="flex justify-between gap-2 font-medium">
               <span>{t.full_name}</span>
-              <span className="tabular-nums">{t.role === "owner" ? "—" : formatILS(t.amount)}</span>
+              <span className="tabular-nums">{t.role === "owner" && t.amount === 0 ? "—" : formatILS(t.amount)}</span>
             </div>
             <div className="text-xs text-muted-foreground">
               {ROLE_LABELS[t.role as StaffRole] ?? t.role} · {t.shifts} משמרות · {t.hours} שעות
@@ -149,7 +161,7 @@ export function TeamTab({ data }: { data: DashboardData }) {
             <tr key={t.employee_id || `${t.role}-${t.full_name}`} className="border-b last:border-0">
               <td className="py-2">
                 {t.full_name}
-                {t.role === "owner" && <span className="ms-1 text-xs text-muted-foreground">(ללא שכר)</span>}
+                {t.role === "owner" && t.amount === 0 && <span className="ms-1 text-xs text-muted-foreground">(ללא שכר)</span>}
               </td>
               <td className="py-2 tabular-nums">{t.shifts}</td>
               <td className="py-2 tabular-nums">{t.hours}</td>

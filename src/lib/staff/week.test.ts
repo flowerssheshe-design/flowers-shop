@@ -61,7 +61,8 @@ describe("payroll", () => {
     expect(computeEarnings({ id: "b", role: "worker", pay_type: "per_delivery", pay_rate: 12 }, shifts, 7).amount).toBe(0);
   });
 
-  it("never pays owners, even with an allocation", () => {
-    expect(computeEarnings({ id: "a", role: "owner", pay_type: "hourly", pay_rate: 40 }, shifts, 0, 100).amount).toBe(0);
+  it("pays owners only their budget share, never their hourly rate", () => {
+    expect(computeEarnings({ id: "a", role: "owner", pay_type: "hourly", pay_rate: 40 }, shifts, 0, 100).amount).toBe(100);
+    expect(computeEarnings({ id: "a", role: "owner", pay_type: "hourly", pay_rate: 40 }, shifts, 0, 0).amount).toBe(0);
   });
 });

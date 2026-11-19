@@ -59,8 +59,10 @@ export async function stallAccess(
   admin: Admin,
   me: StaffEmployee,
   _today: string,
+  /** The current week when the caller already has it (saves loading the settings again). */
+  knownWeek?: BusinessWeek,
 ): Promise<{ stalls: StallRow[]; defaultId: string | null }> {
-  const week = currentBusinessWeek(await getServerSettings());
+  const week = knownWeek ?? currentBusinessWeek(await getServerSettings());
   const [{ data: stalls, error: stallsErr }, { data: shifts, error: shiftsErr }] = await Promise.all([
     admin
       .from("stalls")
@@ -89,8 +91,9 @@ export async function checkStall(
   me: StaffEmployee,
   today: string,
   stallId: string,
+  knownWeek?: BusinessWeek,
 ): Promise<StallRow | null> {
-  const { stalls } = await stallAccess(admin, me, today);
+  const { stalls } = await stallAccess(admin, me, today, knownWeek);
   return stalls.find((s) => s.id === stallId) ?? null;
 }
 

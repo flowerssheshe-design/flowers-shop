@@ -16,8 +16,8 @@ const people: BudgetCandidate[] = [
 const byId = new Map(people.map((p) => [p.id, p]));
 
 describe("weekly budget split", () => {
-  it("only stall sellers, couriers and the shift manager can get a share", () => {
-    expect(people.filter(canReceiveBudget).map((p) => p.id)).toEqual(["seller", "courier", "ops"]);
+  it("only stall sellers, couriers and the managers (owners too) can get a share", () => {
+    expect(people.filter(canReceiveBudget).map((p) => p.id).sort()).toEqual(["courier", "ops", "owner", "seller"]);
   });
 
   it("accepts a split up to the budget, including the manager himself", () => {
@@ -29,10 +29,12 @@ describe("weekly budget split", () => {
     expect(r).toEqual({ ok: true, total: 500 });
   });
 
-  it("refuses going over the budget, a missing budget, owners and duplicates", () => {
+  it("refuses going over the budget, a missing budget, people with no stall work and duplicates", () => {
     expect(checkAllocations(300, [{ employee_id: "seller", amount: 300.01 }], byId).ok).toBe(false);
     expect(checkAllocations(null, [{ employee_id: "seller", amount: 10 }], byId).ok).toBe(false);
-    expect(checkAllocations(500, [{ employee_id: "owner", amount: 10 }], byId).ok).toBe(false);
+    // An owner gets money only when staffed this week.
+    expect(checkAllocations(500, [{ employee_id: "owner", amount: 10 }], byId, new Set(["seller"])).ok).toBe(false);
+    expect(checkAllocations(500, [{ employee_id: "owner", amount: 10 }], byId, new Set(["owner"])).ok).toBe(true);
     expect(checkAllocations(500, [{ employee_id: "runner", amount: 10 }], byId).ok).toBe(false);
     expect(
       checkAllocations(500, [
